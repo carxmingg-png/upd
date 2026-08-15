@@ -184,7 +184,7 @@ const STREETPASS_BODY = JSON.stringify({
 });
 
 // All 189 Car Model IDs matching the python bot
-const ALL_CAR_MODELS = [
+export const ALL_CAR_MODELS = [
   "toyotasupra2020", "bmwm3e46", "bmwm3e30", "bmwm3e36", "bmwe30", "bmw340i",
   "bmwm240i", "bmw2002", "bmw1m", "bmwm4", "bmwm2", "bmwm5e60", "bmwm5e34",
   "bmwm6", "bmw760li", "bmwe46", "bmw3series", "bmw5series", "toyotaae86",
@@ -195,7 +195,7 @@ const ALL_CAR_MODELS = [
   "nissansilvia", "nissan180sx", "nissanskyline", "nissanskylinegtr",
   "nissangtrs15", "nissangtrs14", "nissanpatrol", "nissanfrontier",
   "nissanfairladyz31", "nissanfairladyz32", "nissanfairladyz33",
-  "hondacivic", "hondaaccord", "hondacrx", "hondaintegra", "hondnsx",
+  "hondacivic", "hondaaccord", "hondacrx", "hondaintegra", "hondansx",
   "hondas2000", "hondacr-v", "hondafit", "hondaprelude",
   "mazdamiata", "mazdamx5", "mazdamx6", "mazdarx7", "mazdarx8",
   "mazda6", "mazda3", "mazdaatenza", "mazdabt50",
@@ -241,9 +241,78 @@ const ALL_CAR_MODELS = [
   "hyundaiveloster", "hyundaigenesis", "hyundaicoupetib", "hyundaicelantra",
   "kiagts", "kiastinger", "kiaoptima", "kiasorento",
   "lexusisf", "lexusis300", "lexusis200", "lexuslc500", "lexuslx",
-  "infinitiq50", "infinitifx", "infinitg35",
+  "infinitiq50", "infinitifx", "infinitig35",
   "acuratsx", "acuransx", "acurardx"
 ];
+export const ALL_CAR_MODEL_IDS = ALL_CAR_MODELS;
+
+// COMPLETE REAL ESTATE DATA (52 properties from the game)
+export const REAL_ESTATE_PROPERTIES = [
+  "apartment_01", "apartment_51", "apartment_95",
+  "apartment_industrial_SP", "apartment_midtown_SP", "apartment_midtown2_SP", "apartment_midtown3_SP",
+  "Industrial_apartment_1", "Industrial_apartment_2", "Industrial_apartment_3", "Industrial_apartment_4", "Industrial_apartment_5", "Industrial_apartment_6",
+  "Midtown_apartment_1", "Midtown_apartment_2", "Midtown_apartment_3", "Midtown_apartment_4", "Midtown_apartment_5", "Midtown_apartment_6",
+  "Midtown_apartment_7", "Midtown_apartment_8", "Midtown_apartment_9", "Midtown_apartment_10", "Midtown_apartment_11", "Midtown_apartment_12",
+  "Prigorod_apartment_1", "Prigorod_apartment_2", "Prigorod_apartment_3", "Prigorod_apartment_4", "Prigorod_apartment_5", "Prigorod_apartment_6", "Prigorod_apartment_7",
+  "Mountain_apartment_1", "Mountain_apartment_2", "Mountain_apartment_3", "Mountain_apartment_4", "Mountain_apartment_5", "Mountain_apartment_6",
+  "Mountain_apartment_7", "Mountain_apartment_8", "Mountain_apartment_9", "Mountain_apartment_11", "Mountain_apartment_13", "Mountain_apartment_14",
+  "Mountain_apartment_15", "Mountain_apartment_16", "Mountain_apartment_17", "Mountain_apartment_18", "Mountain_apartment_19",
+  "Speedway_apartment_1", "Speedway_apartment_2", "Speedway_apartment_3"
+];
+
+export const EXTRA_LOCATION_KEYS = ["car_market_0", "car_showroom_0", "car_showroom_1", "car_showroom_2"];
+
+export function makeCarEntry(modelId: string, slotId: string) {
+  return {
+    "__desc_id": modelId,
+    "tuning": { "engine": 3, "turbo": 3, "brakes": 3, "suspension": 3, "gearbox": 3, "tires": 3 },
+    "appearance": {},
+    "mileage": 0,
+    "wins": 0,
+    "slot_id": slotId
+  };
+}
+
+export function buildBuiltinRegularCars(): Record<string, any> {
+  const carsItems: Record<string, any> = {};
+  ALL_CAR_MODELS.forEach((modelId, idx) => {
+    const id = (1001 + idx).toString();
+    carsItems[id] = makeCarEntry(modelId, id);
+  });
+  return carsItems;
+}
+
+export function getAllBuiltinCars(): Record<string, any> {
+  const result: Record<string, any> = {};
+  const existingDesc = new Set<string>();
+
+  // 1. Add all tuned cars from PROFILE_TEMPLATE
+  if (PROFILE_TEMPLATE && PROFILE_TEMPLATE.cars && PROFILE_TEMPLATE.cars.items) {
+    for (const [cid, cfg] of Object.entries(PROFILE_TEMPLATE.cars.items)) {
+      if (cfg && typeof cfg === "object" && (cfg as any).__desc_id) {
+        result[cid] = JSON.parse(JSON.stringify(cfg));
+        existingDesc.add((cfg as any).__desc_id);
+      }
+    }
+  }
+
+  // 2. Add all missing models from ALL_CAR_MODELS
+  let nextId = 2000;
+  for (const carId of Object.keys(result)) {
+    const num = parseInt(carId, 10);
+    if (!isNaN(num) && num >= nextId) nextId = num + 1;
+  }
+
+  for (const model of ALL_CAR_MODELS) {
+    if (!existingDesc.has(model)) {
+      result[String(nextId)] = makeCarEntry(model, String(nextId));
+      existingDesc.add(model);
+      nextId++;
+    }
+  }
+
+  return result;
+}
 
 let mongoClient: any = null;
 async function getMongoClient() {
@@ -552,96 +621,401 @@ try {
 
 const PROFILE_TEMPLATE = cachedProfileTemplate;
 
-// Helper to parse custom car strings (supports JSON, Base64 gzip/zlib, deflate, or raw format up to 10MB+)
-function parseCustomTemplate(str: string | undefined | null): any {
-  if (!str || typeof str !== "string" || !str.trim()) return null;
-  const trimmed = str.trim();
+// ============================================================
+// COMPRESSION & DECOMPRESSION (Matches CarX Street Gzip Protocol)
+// ============================================================
+export function compressData(profile: any): string {
+  try {
+    const raw = Buffer.from(JSON.stringify(profile), "utf-8");
+    const gz = zlib.gzipSync(raw);
+    const lenBuf = Buffer.alloc(4);
+    lenBuf.writeUInt32LE(raw.length, 0);
+    return Buffer.concat([lenBuf, gz]).toString("base64");
+  } catch (e: any) {
+    console.error("[COMPRESS ERROR]", e.message || e);
+    const raw = Buffer.from(JSON.stringify(profile), "utf-8");
+    return raw.toString("base64");
+  }
+}
+
+export function decompressData(s: string | undefined | null): any {
+  if (!s || typeof s !== "string") return null;
+  let trimmed = s.trim();
+  if (!trimmed) return null;
+
+  // Remove potential outer quotes
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    trimmed = trimmed.substring(1, trimmed.length - 1).trim();
+  }
 
   // 1. Direct JSON check
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     try {
-      const parsed = JSON.parse(trimmed);
-      return parsed;
+      return JSON.parse(trimmed);
     } catch { }
   }
 
-  // 2. Base64 Decompression
-  try {
-    const decoded = Buffer.from(trimmed, "base64");
-    let decompressed: Buffer | null = null;
+  // 2. Handle "l84l" prefix format (used by Python bot variant: "l84l" + base64(b"\x00" + gzip))
+  if (trimmed.startsWith("l84l")) {
     try {
-      decompressed = zlib.gunzipSync(decoded.subarray(4));
-    } catch {
+      const raw = Buffer.from(trimmed.substring(4), "base64");
       try {
-        decompressed = zlib.gunzipSync(decoded);
+        const decompressed = zlib.gunzipSync(raw.subarray(1));
+        return JSON.parse(decompressed.toString("utf-8"));
       } catch {
-        try {
-          decompressed = zlib.inflateSync(decoded);
-        } catch {
-          decompressed = decoded;
-        }
+        const decompressed = zlib.gunzipSync(raw);
+        return JSON.parse(decompressed.toString("utf-8"));
+      }
+    } catch { }
+  }
+
+  // 3. Base64 Decompression
+  try {
+    const raw = Buffer.from(trimmed, "base64");
+    // Standard CarX protocol has 4-byte length prefix
+    if (raw.length > 4) {
+      try {
+        const decompressed = zlib.gunzipSync(raw.subarray(4));
+        return JSON.parse(decompressed.toString("utf-8"));
+      } catch { }
+    }
+    // Try raw gzip
+    try {
+      const decompressed = zlib.gunzipSync(raw);
+      return JSON.parse(decompressed.toString("utf-8"));
+    } catch {
+      // Try inflate
+      try {
+        const decompressed = zlib.inflateSync(raw);
+        return JSON.parse(decompressed.toString("utf-8"));
+      } catch {
+        return JSON.parse(raw.toString("utf-8"));
       }
     }
-    if (decompressed) {
-      const jsonStr = decompressed.toString("utf-8");
-      return JSON.parse(jsonStr);
-    }
-  } catch (e) {
-    console.warn("[CUSTOM TEMPLATE] Could not parse custom string:", (e as any)?.message);
+  } catch (e: any) {
+    console.warn("[DECOMPRESS WARN] Unable to decompress string:", e.message || e);
   }
   return null;
 }
 
-// In-memory parsed template caches for high-speed repeated injections
-let _cachedRegularCarsTemplate: any = null;
-let _cachedRegularCarsStringSrc = "";
-let _cachedPremiumCarsTemplate: any = null;
-let _cachedPremiumCarsStringSrc = "";
+// ============================================================
+// CAR EXTRACTION UTILITIES (Supports full profile, cars dict, or raw items)
+// ============================================================
+export function extractCarsFromObject(data: any): Record<string, any> | null {
+  if (!data || typeof data !== "object") return null;
+  let cars: Record<string, any> = {};
 
-function getCarsTemplateForPackage(pkg: "regular" | "premium" | "all" | undefined, db?: any): any {
-  if (pkg === "regular") {
-    const customReg = db?.custom_regular_cars_string;
-    if (customReg && typeof customReg === "string" && customReg.trim()) {
-      if (customReg === _cachedRegularCarsStringSrc && _cachedRegularCarsTemplate) {
-        return _cachedRegularCarsTemplate;
-      }
-      const parsed = parseCustomTemplate(customReg);
-      if (parsed) {
-        _cachedRegularCarsTemplate = parsed;
-        _cachedRegularCarsStringSrc = customReg;
-        return parsed;
-      }
+  if (data.cars && typeof data.cars === "object") {
+    if (data.cars.items && typeof data.cars.items === "object") {
+      cars = data.cars.items;
+    } else {
+      cars = data.cars;
     }
-    // Fallback: create standard Regular Cars package (starter & street cars)
-    if (PROFILE_TEMPLATE) {
-      const reg = structuredClone(PROFILE_TEMPLATE);
-      if (reg.cars && reg.cars.items) {
-        const allKeys = Object.keys(reg.cars.items);
-        const regKeys = allKeys.slice(0, 30);
-        const filteredItems: Record<string, any> = {};
-        for (const k of regKeys) {
-          filteredItems[k] = reg.cars.items[k];
+  } else if (data.items && typeof data.items === "object") {
+    cars = data.items;
+  } else {
+    // Check if data itself or any property is the cars dictionary
+    for (const k of Object.keys(data)) {
+      const v = data[k];
+      if (v && typeof v === "object") {
+        if (v.__desc_id) {
+          cars = data;
+          break;
+        } else if (v.items && typeof v.items === "object") {
+          cars = v.items;
+          break;
         }
-        reg.cars.items = filteredItems;
       }
-      return reg;
     }
   }
 
-  // Premium or All
+  const extracted: Record<string, any> = {};
+  for (const [cid, cfg] of Object.entries(cars)) {
+    if (cfg && typeof cfg === "object" && (cfg as any).__desc_id) {
+      extracted[String(cid)] = JSON.parse(JSON.stringify(cfg));
+    }
+  }
+
+  return Object.keys(extracted).length > 0 ? extracted : null;
+}
+
+export function extractCarsFromFileContent(content: string | undefined | null): Record<string, any> | null {
+  if (!content || typeof content !== "string") return null;
+  let trimmed = content.trim();
+  if (!trimmed) return null;
+
+  // Remove possible outer quotes or trailing semicolons
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    trimmed = trimmed.substring(1, trimmed.length - 1).trim();
+  }
+
+  // 1. Try decompressing directly
+  const decompressed = decompressData(trimmed);
+  if (decompressed) {
+    const extracted = extractCarsFromObject(decompressed);
+    if (extracted && Object.keys(extracted).length > 0) return extracted;
+  }
+
+  // 2. Try raw JSON
+  try {
+    const parsed = JSON.parse(trimmed);
+    const extracted = extractCarsFromObject(parsed);
+    if (extracted && Object.keys(extracted).length > 0) return extracted;
+  } catch { }
+
+  // 3. Try searching for Base64 compressed string inside code / file (e.g. `REGULAR_CARS_STRING = "..."`)
+  const b64Match = trimmed.match(/["']([A-Za-z0-9+/=]{100,})["']/);
+  if (b64Match && b64Match[1]) {
+    const fromB64 = decompressData(b64Match[1]);
+    if (fromB64) {
+      const extracted = extractCarsFromObject(fromB64);
+      if (extracted && Object.keys(extracted).length > 0) return extracted;
+    }
+  }
+
+  // 4. Try Python dictionary syntax (convert single quotes, True, False, None)
+  try {
+    const dictMatch = trimmed.match(/\{[\s\S]*\}/);
+    if (dictMatch) {
+      const jsonCandidate = dictMatch[0]
+        .replace(/'/g, '"')
+        .replace(/:\s*True\b/g, ': true')
+        .replace(/:\s*False\b/g, ': false')
+        .replace(/:\s*None\b/g, ': null');
+      const parsed = JSON.parse(jsonCandidate);
+      const extracted = extractCarsFromObject(parsed);
+      if (extracted && Object.keys(extracted).length > 0) return extracted;
+    }
+  } catch { }
+
+  return null;
+}
+
+// In-memory cache for loaded cars
+let _cachedRegularCars: Record<string, any> | null = null;
+let _cachedRegularCarsSrc = "";
+let _cachedPremiumCars: Record<string, any> | null = null;
+let _cachedPremiumCarsSrc = "";
+
+export function getRegularCarData(db?: any): Record<string, any> {
+  const customReg = db?.custom_regular_cars_string;
+  if (customReg && typeof customReg === "string" && customReg.trim()) {
+    if (customReg === _cachedRegularCarsSrc && _cachedRegularCars) {
+      return _cachedRegularCars;
+    }
+    const cars = extractCarsFromFileContent(customReg);
+    if (cars && Object.keys(cars).length > 0) {
+      _cachedRegularCars = cars;
+      _cachedRegularCarsSrc = customReg;
+      return cars;
+    }
+  }
+  return getAllBuiltinCars();
+}
+
+export function getPremiumCarData(db?: any): Record<string, any> {
   const customPrem = db?.custom_premium_cars_string || db?.custom_cars_string;
   if (customPrem && typeof customPrem === "string" && customPrem.trim()) {
-    if (customPrem === _cachedPremiumCarsStringSrc && _cachedPremiumCarsTemplate) {
-      return _cachedPremiumCarsTemplate;
+    if (customPrem === _cachedPremiumCarsSrc && _cachedPremiumCars) {
+      return _cachedPremiumCars;
     }
-    const parsed = parseCustomTemplate(customPrem);
-    if (parsed) {
-      _cachedPremiumCarsTemplate = parsed;
-      _cachedPremiumCarsStringSrc = customPrem;
-      return parsed;
+    const cars = extractCarsFromFileContent(customPrem);
+    if (cars && Object.keys(cars).length > 0) {
+      _cachedPremiumCars = cars;
+      _cachedPremiumCarsSrc = customPrem;
+      return cars;
     }
   }
-  return PROFILE_TEMPLATE;
+  return getAllBuiltinCars();
+}
+
+// Backward-compatibility wrapper for getCarsTemplateForPackage
+function getCarsTemplateForPackage(pkg: "regular" | "premium" | "all" | undefined, db?: any): any {
+  const cars = pkg === "regular" ? getRegularCarData(db) : getPremiumCarData(db);
+  const base = PROFILE_TEMPLATE ? structuredClone(PROFILE_TEMPLATE) : {};
+  base.cars = { seed: 1000, items: cars };
+  base.car_models = {
+    keys: Object.keys(cars).map(String),
+    values: Object.values(cars).map((v: any) => v.__desc_id || "")
+  };
+  return base;
+}
+
+// ============================================================
+// REAL ESTATE & SLOT ASSIGNMENT (Ensures 100% valid game database references)
+// ============================================================
+export function ensureRealEstateSlotsForCars(profile: any) {
+  if (!profile.real_estates) profile.real_estates = {};
+  if (!profile.real_estate_slots) profile.real_estate_slots = {};
+
+  for (const prop of REAL_ESTATE_PROPERTIES) {
+    const slots = [
+      { unlocked: true, car_id: "", is_empty: true },
+      { unlocked: true, car_id: "", is_empty: true },
+      { unlocked: true, car_id: "", is_empty: true }
+    ];
+    if (!profile.real_estates[prop]) {
+      profile.real_estates[prop] = { is_bought: true, slots };
+    } else {
+      profile.real_estates[prop].is_bought = true;
+      if (!Array.isArray(profile.real_estates[prop].slots) || profile.real_estates[prop].slots.length !== 3) {
+        profile.real_estates[prop].slots = slots;
+      } else {
+        for (const slot of profile.real_estates[prop].slots) {
+          slot.unlocked = true;
+          if (slot.car_id === undefined) slot.car_id = "";
+        }
+      }
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const slotId = `${prop}_slot_${i}`;
+      if (!profile.real_estate_slots[slotId]) {
+        profile.real_estate_slots[slotId] = { unlocked: true, car_id: "" };
+      } else {
+        profile.real_estate_slots[slotId].unlocked = true;
+        if (profile.real_estate_slots[slotId].car_id === undefined) {
+          profile.real_estate_slots[slotId].car_id = "";
+        }
+      }
+    }
+  }
+
+  // Location objects set
+  if (!profile.locations) profile.locations = {};
+  if (!profile.locations.default) profile.locations.default = {};
+  if (!profile.locations.default.location_objects_set) {
+    profile.locations.default.location_objects_set = { keys: [] };
+  }
+  const locKeys: string[] = profile.locations.default.location_objects_set.keys;
+  for (const p of [...REAL_ESTATE_PROPERTIES, ...EXTRA_LOCATION_KEYS]) {
+    if (!locKeys.includes(p)) {
+      locKeys.push(p);
+    }
+  }
+
+  // Assign cars to real estate slots
+  profile.car_to_real_estate_slot = { keys: [] as string[], values: [] as string[] };
+  const carsItems = profile.cars?.items || {};
+  const carIds = Object.keys(carsItems).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+
+  let activeCarId = carIds[0] || "1001";
+  for (const carId of carIds) {
+    if (carsItems[carId]?.__desc_id === "toyotasupra2020") {
+      activeCarId = carId;
+      break;
+    }
+  }
+  profile.current_car_id = typeof profile.current_car_id === "number" ? parseInt(activeCarId, 10) : activeCarId;
+
+  const availableSlots = Object.keys(profile.real_estate_slots).filter(
+    s => profile.real_estate_slots[s]?.unlocked
+  );
+
+  for (let i = 0; i < carIds.length; i++) {
+    const carId = carIds[i];
+    if (i < availableSlots.length) {
+      const slotName = availableSlots[i];
+      profile.real_estate_slots[slotName].car_id = carId;
+      profile.car_to_real_estate_slot.keys.push(carId);
+      profile.car_to_real_estate_slot.values.push(slotName);
+    }
+  }
+}
+
+// ============================================================
+// ULTIMATE MAP UNLOCK
+// ============================================================
+export function unlockMapsUltimate(profile: any) {
+  if (!profile.game_world_parts) profile.game_world_parts = {};
+  for (const m of ['industrial', 'midtown', 'suburb', 'port', 'mountain', 'sunset']) {
+    profile.game_world_parts[m] = { unlocked: true };
+  }
+
+  ensureRealEstateSlotsForCars(profile);
+
+  if (!profile.race_generators) profile.race_generators = {};
+  const ts = Math.floor(Date.now() / 1000);
+  const mountain = profile.race_generators.game_world_mountain_farm_races || (profile.race_generators.game_world_mountain_farm_races = {});
+  mountain.races_counter = { keys: ["mountain_race_farm_drift_DM001", "mountain_race_farm_sprint_ST001", "mountain_race_farm_free_drift_AO01", "mountain_race_farm_gymkhana_ao04"], values: [1, 2, 3, 4] };
+  mountain.races_set = { keys: ["mountain_race_farm_drift_DM005", "mountain_race_farm_sprint_ST004", "mountain_race_farm_free_drift_AO02", "mountain_race_farm_gymkhana_ao08"], values: [1, 2, 3, 4] };
+
+  const sunset = profile.race_generators.game_world_sunset_farm_races || (profile.race_generators.game_world_sunset_farm_races = {});
+  sunset.races_counter = { keys: ["speedway_race_farm_free_drift_AO01", "speedway_race_farm_sprint_DM01", "speedway_race_farm_sprint_DM05", "speedway_race_farm_gymkhana_ao01"], values: [1, 2, 3, 4] };
+  sunset.races_set = { keys: ["speedway_race_farm_free_drift_AO02", "speedway_race_farm_sprint_DM02", "speedway_race_simple_drift_DM01", "speedway_race_farm_gymkhana_ao01"], values: [1, 2, 3, 4] };
+
+  if (!profile.races_ts) profile.races_ts = { keys: [], values: [] };
+  const allKeys: string[] = [
+    ...(mountain.races_counter?.keys || []),
+    ...(mountain.races_set?.keys || []),
+    ...(sunset.races_counter?.keys || []),
+    ...(sunset.races_set?.keys || [])
+  ];
+  for (const k of allKeys) {
+    if (!profile.races_ts.keys.includes(k)) {
+      profile.races_ts.keys.push(k);
+      profile.races_ts.values.push(ts);
+    }
+  }
+
+  profile.is_tutorial_finished = true;
+  profile.tutorial_step = 600;
+  return profile;
+}
+
+// ============================================================
+// PROFILE-BASED CAR INJECTION (Matches Python Reference Bot)
+// ============================================================
+export function implantCarsProfile(
+  profile: any,
+  carsToAdd: Record<string, any>
+): { profile: any; added: number; skipped: string[] } {
+  if (!carsToAdd || Object.keys(carsToAdd).length === 0) {
+    return { profile, added: 0, skipped: [] };
+  }
+
+  if (!profile.cars) profile.cars = {};
+  if (!profile.cars.items || typeof profile.cars.items !== "object") profile.cars.items = {};
+
+  const existing: Record<string, any> = profile.cars.items;
+
+  let maxId = 1000;
+  for (const carId of Object.keys(existing)) {
+    const cid = parseInt(carId, 10);
+    if (!isNaN(cid) && cid > maxId) {
+      maxId = cid;
+    }
+  }
+
+  let added = 0;
+  for (const [srcCarId, srcCar] of Object.entries(carsToAdd)) {
+    if (!srcCar || typeof srcCar !== "object") continue;
+    const descId = srcCar.__desc_id;
+    if (!descId) continue;
+
+    maxId += 1;
+    const newCar = JSON.parse(JSON.stringify(srcCar));
+    newCar.slot_id = String(maxId);
+    existing[String(maxId)] = newCar;
+    added += 1;
+  }
+
+  profile.cars = { seed: Math.max(1000, maxId + 1), items: existing };
+
+  // Sync car_models
+  const allCarIds = Object.keys(existing);
+  profile.car_models = {
+    keys: allCarIds.map(String),
+    values: allCarIds.map(cid => existing[cid]?.__desc_id || "")
+  };
+
+  if (!profile.current_car_id || !existing[String(profile.current_car_id)]) {
+    profile.current_car_id = allCarIds[0] ? (typeof profile.current_car_id === "number" ? parseInt(allCarIds[0], 10) : allCarIds[0]) : 1001;
+  }
+
+  unlockMapsUltimate(profile);
+
+  return { profile, added, skipped: [] };
 }
 
 function intParse(val: string): number {
@@ -801,7 +1175,43 @@ function extractProfileStats(profile: any, debug = false) {
     finalCash = 21000;
   }
 
-  return { cash: finalCash, gold, level, exp, name, avatar, lastUpdated, isVerified };
+  // Cars count
+  let carsCount = 0;
+  if (profile.cars) {
+    if (profile.cars.items && typeof profile.cars.items === "object") {
+      carsCount = Object.keys(profile.cars.items).length;
+    } else if (typeof profile.cars === "object") {
+      carsCount = Object.keys(profile.cars).length;
+    }
+  } else if (profile.car_models && profile.car_models.values && Array.isArray(profile.car_models.values)) {
+    carsCount = profile.car_models.values.length;
+  }
+
+  // Maps count
+  let mapsCount = 0;
+  if (profile.game_world_parts && typeof profile.game_world_parts === "object") {
+    mapsCount = Object.values(profile.game_world_parts).filter((v: any) => v && (v.unlocked || v === true)).length;
+  }
+
+  const streetPass = !!(profile.is_pass_owned || profile.has_premium || profile.is_premium_active || profile.resources?.street_pass || profile.resources?.battle_pass_resource);
+  const premium = !!(profile.has_premium || profile.is_premium_active || profile.is_premium_max_player);
+
+  return {
+    cash: finalCash,
+    silver: finalCash,
+    gold,
+    level,
+    exp,
+    xp: exp,
+    name,
+    avatar,
+    lastUpdated,
+    isVerified,
+    cars: carsCount,
+    maps: mapsCount,
+    streetPass,
+    premium
+  };
 }
 
 // CarX API Requester Client
@@ -950,9 +1360,13 @@ class CarXClient {
     }
   }
 
-  // Fetch profile - try both GET and POST, both with userId and without
+  // Fetch profile - decompresses CarX compressed_data format (matches python reference bot)
   static async getProfile(token: string, userId?: string, deviceId?: string, uniqueId?: string) {
-    const headers: Record<string, string> = { ...DEFAULT_HEADERS, "Authorization": fToken(token) };
+    const headers: Record<string, string> = {
+      "User-Agent": "UnityPlayer/6000.0.64f1 (UnityWebRequest/1.0, libcurl/8.10.1-DEV)",
+      "Accept": "application/json",
+      "Authorization": fToken(token)
+    };
     if (deviceId) {
       headers["Device-Id"] = deviceId;
       headers["X-Device-Id"] = deviceId;
@@ -966,123 +1380,58 @@ class CarXClient {
       headers["X-UnipId"] = uniqueId;
     }
 
-    type ProfileResult = { profile: any; response: any; isWrappedInD: boolean; isWrappedInData: boolean };
-
-    // Deep-unwrap: recursively search for the actual profile object with resources
-    const deepUnwrap = (obj: any, depth = 0): any => {
-      if (!obj || typeof obj !== "object" || depth > 4) return null;
-      // If this object has resources with any content, it's the profile
-      if (obj.resources && typeof obj.resources === "object") {
-        const r = obj.resources;
-        const hasResourceKeys = Object.keys(r).some(k => r[k] !== undefined && r[k] !== null);
-        if (hasResourceKeys) return obj;
+    function findCompressed(obj: any): string | null {
+      if (!obj || typeof obj !== "object") return null;
+      if (typeof obj.compressed_data === "string" && obj.compressed_data.trim()) {
+        return obj.compressed_data.trim();
       }
-      // If this object has cars/clubs/date_time, it's likely the profile
-      if (obj.cars || obj.clubs || obj.date_time || obj.car_models) return obj;
-      // Try common wrappers
-      for (const key of ["d", "data", "profile", "result", "body", "content"]) {
-        if (obj[key] && typeof obj[key] === "object") {
-          const found = deepUnwrap(obj[key], depth + 1);
-          if (found) return found;
+      for (const k of Object.keys(obj)) {
+        const val = obj[k];
+        if (val && typeof val === "object") {
+          const res = findCompressed(val);
+          if (res) return res;
         }
       }
       return null;
-    };
+    }
 
-    const tryRequest = (url: string, method: string): Promise<ProfileResult | null> => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const body = method === "POST" ? JSON.stringify({}) : undefined;
-      return fetch(url, { headers, method, signal: controller.signal, body })
-        .then(async res => {
-          clearTimeout(timeoutId);
-          console.log(`[PROFILE FETCH] ${method} ${url} status=${res.status}`);
-          if (res.status !== 200 && res.status !== 201) {
-            const errText = await res.text().catch(() => "");
-            console.log(`[PROFILE FETCH] Error body: ${errText.substring(0, 500)}`);
-            return null;
-          }
-          const data = await res.json();
-          console.log(`[PROFILE FETCH] Raw keys:`, Object.keys(data));
-          if (data.d !== undefined) console.log(`[PROFILE FETCH] data.d keys:`, Object.keys(data.d || {}));
-          if (data.data !== undefined) console.log(`[PROFILE FETCH] data.data keys:`, Object.keys(data.data || {}));
-          let isWrappedInD = false;
-          let isWrappedInData = false;
-
-          // First try standard unwrapping
-          let inner = data;
-          if (data && data.d !== undefined) { inner = data.d; isWrappedInD = true; }
-          else if (data && data.data !== undefined) { inner = data.data; isWrappedInData = true; }
-
-          // Accept any object as profile (original behavior) - extractProfileStats will handle parsing
-          if (inner && typeof inner === "object") {
-            console.log(`[PROFILE FETCH] inner keys:`, Object.keys(inner));
-            // If inner has resources, use it directly
-            if (inner.resources && typeof inner.resources === "object" && Object.keys(inner.resources).length > 0) {
-              return { profile: inner, response: res, isWrappedInD, isWrappedInData };
-            }
-            // Otherwise try deep unwrap to find resources
-            const deepInner = deepUnwrap(inner);
-            if (deepInner && deepInner.resources) {
-              console.log(`[PROFILE FETCH] Deep unwrap found resources in inner, keys:`, Object.keys(deepInner));
-              return { profile: deepInner, response: res, isWrappedInD, isWrappedInData };
-            }
-            // Fall back to inner even without resources (original behavior)
-            return { profile: inner, response: res, isWrappedInD, isWrappedInData };
-          }
-
-          // Standard unwrap didn't yield object — try deep unwrap from raw data
-          const deep = deepUnwrap(data);
-          if (deep) {
-            console.log(`[PROFILE FETCH] Deep unwrap found profile, keys:`, Object.keys(deep));
-            return { profile: deep, response: res, isWrappedInD: false, isWrappedInData: false };
-          }
-
-          console.log(`[PROFILE FETCH] No valid profile found in response`);
-          return null;
-        })
-        .catch(e => { clearTimeout(timeoutId); console.log(`[PROFILE FETCH] Error: ${e.message}`); return null; });
-    };
-
-    // Try the specific ID endpoints first (GET and POST)
+    const urls = [`${GAME_BASE_URL}/profiles`];
     if (userId) {
       const numericId = typeof userId === "string" ? userId.replace(/\D/g, "") : String(userId);
-      const urlsToTry = [];
-      if (numericId && numericId !== userId) {
-        urlsToTry.push(`${GAME_BASE_URL}/profiles/${numericId}`);
-      }
-      urlsToTry.push(`${GAME_BASE_URL}/profiles/${userId}`);
+      if (numericId && numericId !== userId) urls.push(`${GAME_BASE_URL}/profiles/${numericId}`);
+      urls.push(`${GAME_BASE_URL}/profiles/${userId}`);
+    }
 
-      for (const url of urlsToTry) {
-        const getRes = await tryRequest(url, "GET");
-        if (getRes) {
-          console.log(`[PROFILE FETCH] Successfully resolved profile from GET ${url}`);
-          return getRes;
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, {
+          method: "GET",
+          headers,
+          signal: AbortSignal.timeout(15000)
+        });
+
+        if (res.status === 200 || res.status === 201) {
+          const data = await res.json();
+          const compressed = findCompressed(data);
+          if (compressed) {
+            const decompressed = decompressData(compressed);
+            if (decompressed) {
+              console.log(`[PROFILE FETCH] Decompressed profile data from ${url}`);
+              return { profile: decompressed, response: res, isWrappedInD: true, isWrappedInData: true };
+            }
+          }
+
+          const inner = data?.d?.data || data?.d || data?.data || data;
+          if (inner && (inner.resources || inner.cars || inner.date_time || inner.car_models)) {
+            return { profile: inner, response: res, isWrappedInD: !!data?.d, isWrappedInData: !!data?.data };
+          }
         }
-
-        const postRes = await tryRequest(url, "POST");
-        if (postRes) {
-          console.log(`[PROFILE FETCH] Successfully resolved profile from POST ${url}`);
-          return postRes;
-        }
+      } catch (e: any) {
+        console.warn(`[PROFILE FETCH] Error on ${url}:`, e.message || e);
       }
     }
 
-    // Fallback to generic /profiles endpoints
-    console.log(`[PROFILE FETCH] Specific profile endpoints failed or not provided. Trying generic fallback...`);
-    const getFallback = await tryRequest(`${GAME_BASE_URL}/profiles`, "GET");
-    if (getFallback) {
-      console.log(`[PROFILE FETCH] Successfully resolved generic profile from GET`);
-      return getFallback;
-    }
-
-    const postFallback = await tryRequest(`${GAME_BASE_URL}/profiles`, "POST");
-    if (postFallback) {
-      console.log(`[PROFILE FETCH] Successfully resolved generic profile from POST`);
-      return postFallback;
-    }
-
-    return { profile: null, response: null, isWrappedInD: true, isWrappedInData: false };
+    return { profile: null, response: null, isWrappedInD: true, isWrappedInData: true };
   }
 
   static async getAuthState(token: string) {
@@ -1120,14 +1469,20 @@ class CarXClient {
           // Fresh account that hasn't initialized profile on CarX server yet
           stats = {
             cash: 21000,
+            silver: 21000,
             gold: 0,
             level: 1,
             exp: 0,
+            xp: 0,
             name: null,
             avatar: null,
             lastUpdated: null,
             isVerified: false,
-            isFallback: true
+            isFallback: true,
+            cars: 1,
+            maps: 0,
+            streetPass: false,
+            premium: false
           };
         }
         if (authState) {
@@ -1141,7 +1496,7 @@ class CarXClient {
     }
   }
 
-  // Optimized: fire both upload URLs in parallel, return first success
+  // Upload profile using compressed_data payload with retry loop (matches python reference bot)
   static async uploadProfile(
     token: string,
     profile: any,
@@ -1150,10 +1505,13 @@ class CarXClient {
     isWrappedInD = true,
     isWrappedInData = false,
     deviceId?: string,
-    uniqueId?: string
-  ) {
+    uniqueId?: string,
+    retries = 5
+  ): Promise<{ success: boolean; response: any }> {
     const headers: Record<string, string> = {
-      ...DEFAULT_HEADERS,
+      "User-Agent": "UnityPlayer/6000.0.64f1 (UnityWebRequest/1.0, libcurl/8.10.1-DEV)",
+      "Accept": "application/json",
+      "Content-Type": "application/json",
       "Authorization": fToken(token)
     };
 
@@ -1170,76 +1528,31 @@ class CarXClient {
       headers["X-UnipId"] = uniqueId;
     }
 
-    if (getResponse) {
-      const etag = getResponse.headers.get("ETag");
-      if (etag) { headers["ETag"] = etag; headers["If-Match"] = etag; }
-      const profileVer = getResponse.headers.get("X-Profile-Version");
-      if (profileVer) { headers["X-Profile-Version"] = profileVer; }
-      else { headers["X-Profile-Version"] = "1"; }
-      const xVer = getResponse.headers.get("X-Version");
-      if (xVer) headers["X-Version"] = xVer;
-      const lastMod = getResponse.headers.get("Last-Modified");
-      if (lastMod) { headers["Last-Modified"] = lastMod; headers["If-Unmodified-Since"] = lastMod; }
-    } else {
-      headers["X-Profile-Version"] = "1";
-    }
+    const b64 = compressData(profile);
+    const payload = JSON.stringify({ compressed_data: b64 });
 
-    // Do NOT wrap the profile when uploading. The game server expects the raw profile JSON,
-    // and wrapping it in {"d": ...} or {"data": ...} can cause it to be stored double-wrapped,
-    // which makes the game client get stuck at the loading stage.
-    const bodyStr = JSON.stringify(profile);
-    const urls: string[] = [`${GAME_BASE_URL}/profiles`];
-    if (userId) {
-      const numericId = typeof userId === "string" ? userId.replace(/\D/g, "") : String(userId);
-      if (numericId && numericId !== userId) {
-        urls.push(`${GAME_BASE_URL}/profiles/${numericId}`);
-      }
-      urls.push(`${GAME_BASE_URL}/profiles/${userId}`);
-    }
-
-    const tryUpload = (url: string): Promise<{ success: boolean; response: any } | null> => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-      return fetch(url, {
-        method: "POST",
-        headers,
-        body: bodyStr,
-        signal: controller.signal
-      })
-        .then(res => {
-          clearTimeout(timeoutId);
-          if (res.status === 200 || res.status === 201 || res.status === 204) {
-            return { success: true, response: res };
-          }
-          return { success: false, response: res };
-        })
-        .catch(e => { clearTimeout(timeoutId); return null; });
-    };
-
-    if (urls.length === 1) {
-      const r = await tryUpload(urls[0]);
-      return r || { success: false, response: null };
-    }
-
-    // Race both upload URLs in parallel — return first success
-    return new Promise<{ success: boolean; response: any }>(async resolve => {
-      let settled = false;
-      const pending = urls.map(url => tryUpload(url));
-      for (const p of pending) {
-        p.then(result => {
-          if (!settled && result?.success) {
-            settled = true;
-            resolve(result);
-          }
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const res = await fetch(`${GAME_BASE_URL}/profiles`, {
+          method: "POST",
+          headers,
+          body: payload,
+          signal: AbortSignal.timeout(20000)
         });
-      }
-      Promise.all(pending).then(results => {
-        if (!settled) {
-          const any = results.find(r => r !== null);
-          resolve(any || { success: false, response: null });
+
+        if (res.status === 200 || res.status === 201 || res.status === 204) {
+          console.log(`[PROFILE UPLOAD] Success on attempt ${attempt + 1}`);
+          return { success: true, response: res };
         }
-      });
-    });
+        console.warn(`[PROFILE UPLOAD] Attempt ${attempt + 1} returned status ${res.status}`);
+        await new Promise(r => setTimeout(r, 1500));
+      } catch (e: any) {
+        console.warn(`[PROFILE UPLOAD] Attempt ${attempt + 1} error:`, e.message || e);
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+
+    return { success: false, response: null };
   }
 
   static async deleteAccount(token: string, email: string, pass: string) {
@@ -1644,262 +1957,32 @@ export function modifyProfile(base: any, mods: {
   // Cars injection & real estate slot mapping
   const isInjectingCars = !!(mods.get_all_cars || mods.regular_cars || mods.premium_cars || mods.cars_package);
   const carPackage = mods.regular_cars ? "regular" : (mods.premium_cars ? "premium" : (mods.cars_package || "premium"));
-  const activeTemplate = getCarsTemplateForPackage(carPackage, (mods as any)._db);
 
   if (isInjectingCars) {
     console.log(`[MODIFY PROFILE] Injecting cars package (${carPackage})...`);
-
-    // Copy the rich cars database from template (Regular or Premium package)
-    if (activeTemplate) {
-      profile.cars = structuredClone(activeTemplate.cars || (PROFILE_TEMPLATE ? PROFILE_TEMPLATE.cars : { seed: 0, items: {} }));
-      profile.car_models = structuredClone(activeTemplate.car_models || (PROFILE_TEMPLATE ? PROFILE_TEMPLATE.car_models : { keys: [], values: [] }));
-
-      // Exclude toyotagr86 and buickgnx (StreetPass reward cars) to prevent claiming process from getting stuck in-game
-      if (profile.cars && profile.cars.items) {
-        for (const carId in profile.cars.items) {
-          const descId = profile.cars.items[carId].__desc_id || "";
-          if (descId === "toyotagr86" || descId.includes("buickgnx")) {
-            delete profile.cars.items[carId];
-            console.log(`[MODIFY PROFILE] Excluded ${descId} (ID: ${carId}) from injected cars to prevent StreetPass claim freeze.`);
-          }
-        }
-      }
-      if (profile.car_models && profile.car_models.keys && profile.car_models.values) {
-        // Remove toyotagr86
-        let idx = profile.car_models.keys.indexOf("toyotagr86");
-        if (idx !== -1) {
-          profile.car_models.keys.splice(idx, 1);
-          profile.car_models.values.splice(idx, 1);
-          console.log("[MODIFY PROFILE] Excluded toyotagr86 from car_models.");
-        }
-        // Remove buickgnx
-        for (let i = profile.car_models.keys.length - 1; i >= 0; i--) {
-          if (profile.car_models.keys[i].includes("buickgnx")) {
-            profile.car_models.keys.splice(i, 1);
-            profile.car_models.values.splice(i, 1);
-            console.log(`[MODIFY PROFILE] Excluded ${profile.car_models.keys[i]} from car_models.`);
-          }
-        }
-      }
-    }
+    const carsToAdd = carPackage === "regular" ? getRegularCarData((mods as any)._db) : getPremiumCarData((mods as any)._db);
+    const { added, skipped } = implantCarsProfile(profile, carsToAdd);
+    console.log(`[MODIFY PROFILE] implantCarsProfile added=${added}, skipped=${skipped.length}`);
 
     if (mods.unlock_houses || isInjectingCars) {
-      console.log("[MODIFY PROFILE] Unlocking all houses...");
-      if (PROFILE_TEMPLATE) {
-        profile.real_estates = structuredClone(PROFILE_TEMPLATE.real_estates);
-        profile.real_estate_slots = structuredClone(PROFILE_TEMPLATE.real_estate_slots);
-        profile.car_to_real_estate_slot = structuredClone(PROFILE_TEMPLATE.car_to_real_estate_slot);
-        if (PROFILE_TEMPLATE.locations) {
-          profile.locations = structuredClone(PROFILE_TEMPLATE.locations);
-        }
-      }
-
-      profile.real_estates = profile.real_estates || {};
-      for (const house in profile.real_estates) {
-        profile.real_estates[house].is_bought = true;
-      }
-
-      profile.real_estate_slots = profile.real_estate_slots || {};
-      for (const slotName in profile.real_estate_slots) {
-        profile.real_estate_slots[slotName].unlocked = true;
-      }
-    } else {
-      // Houses not unlocked. Keep them locked or preserve existing
-      if ((isFresh || mods.safe_repair || !profile.real_estates) && PROFILE_TEMPLATE) {
-        profile.real_estates = {
-          "apartment_95": { is_bought: true }
-        };
-        profile.real_estate_slots = {
-          "apartment_95_slot_0": { unlocked: true, car_id: null }
-        };
-      }
-    }
-
-    // Now, perform a clean and valid assignment of cars to slots
-    profile.real_estate_slots = profile.real_estate_slots || {};
-    profile.real_estates = profile.real_estates || {};
-
-    // Ensure apartment_95 is always bought and unlocked as a safety fallback
-    profile.real_estates["apartment_95"] = profile.real_estates["apartment_95"] || {};
-    profile.real_estates["apartment_95"].is_bought = true;
-    profile.real_estate_slots["apartment_95_slot_0"] = profile.real_estate_slots["apartment_95_slot_0"] || {};
-    profile.real_estate_slots["apartment_95_slot_0"].unlocked = true;
-
-    // Reset all slot assignments
-    for (const slotName in profile.real_estate_slots) {
-      profile.real_estate_slots[slotName].car_id = null;
-    }
-    profile.car_to_real_estate_slot = { keys: [] as string[], values: [] as string[] };
-
-    // Get all unique car IDs
-    const carsItems = profile.cars?.items || {};
-    const carIds = Object.keys(carsItems).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
-
-    // Determine the active car (Supra / 1060 or first car)
-    let activeCarId = carIds[0];
-    for (const carId of carIds) {
-      if (carsItems[carId].__desc_id === "toyotasupra2020") {
-        activeCarId = carId;
-        break;
-      }
-    }
-
-    profile.current_car_id = typeof profile.current_car_id === "number" ? parseInt(activeCarId, 10) : activeCarId;
-
-    // Get all unlocked slots
-    const availableSlots = Object.keys(profile.real_estate_slots).filter(
-      slotName => profile.real_estate_slots[slotName].unlocked
-    );
-
-    // 1. Assign the active car to the first slot
-    const firstSlot = availableSlots[0] || "apartment_95_slot_0";
-    profile.real_estate_slots[firstSlot].car_id = activeCarId;
-    profile.car_to_real_estate_slot.keys.push(activeCarId);
-    profile.car_to_real_estate_slot.values.push(firstSlot);
-
-    // 2. Assign other cars to remaining slots
-    let slotIdx = 1;
-    for (const carId of carIds) {
-      if (carId === activeCarId) continue;
-      if (slotIdx < availableSlots.length) {
-        const assignedSlot = availableSlots[slotIdx];
-        profile.real_estate_slots[assignedSlot].car_id = carId;
-        profile.car_to_real_estate_slot.keys.push(carId);
-        profile.car_to_real_estate_slot.values.push(assignedSlot);
-        slotIdx++;
-      } else {
-        // Overflow cars are not assigned to any slot (they go to the warehouse)
-      }
+      unlockMapsUltimate(profile);
     }
   } else {
-    // isInjectingCars is false
+    // If not injecting car packages, check if fresh profile needs starter Supra
     if (isFresh || mods.safe_repair) {
-      console.log("[MODIFY PROFILE] Fresh or repair profile detected without get_all_cars. Keeping only S90 (toyotasupra2020) as active car.");
       const carsItems = profile.cars?.items || {};
-      let s90Key = "1060";
-      for (const carId in carsItems) {
-        if (carsItems[carId].__desc_id === "toyotasupra2020") {
-          s90Key = carId;
-          break;
-        }
+      if (Object.keys(carsItems).length === 0) {
+        const supra = makeCarEntry("toyotasupra2020", "1001");
+        profile.cars = { seed: 1002, items: { "1001": supra } };
+        profile.car_models = { keys: ["1001"], values: ["toyotasupra2020"] };
+        profile.current_car_id = 1001;
       }
-      if (carsItems[s90Key]) {
-        profile.cars.items = { [s90Key]: structuredClone(carsItems[s90Key]) };
-      }
-      profile.current_car_id = typeof profile.current_car_id === "number" ? parseInt(s90Key, 10) : s90Key;
-
-      // Also prune car_models to prevent mismatch with owned cars in items
-      profile.car_models = {
-        keys: ["toyotasupra2020"],
-        values: [s90Key.toString()]
-      };
     }
 
     if (mods.unlock_houses) {
-      profile.real_estates = profile.real_estates || {};
-      if (PROFILE_TEMPLATE) {
-        for (const house in PROFILE_TEMPLATE.real_estates) {
-          if (!profile.real_estates[house]) {
-            profile.real_estates[house] = structuredClone(PROFILE_TEMPLATE.real_estates[house]);
-          }
-        }
-      }
-      for (const house in profile.real_estates) {
-        profile.real_estates[house].is_bought = true;
-      }
-
-      profile.real_estate_slots = profile.real_estate_slots || {};
-      if (PROFILE_TEMPLATE) {
-        for (const slotName in PROFILE_TEMPLATE.real_estate_slots) {
-          if (!profile.real_estate_slots[slotName]) {
-            profile.real_estate_slots[slotName] = structuredClone(PROFILE_TEMPLATE.real_estate_slots[slotName]);
-          }
-        }
-      }
-      for (const slotName in profile.real_estate_slots) {
-        profile.real_estate_slots[slotName].unlocked = true;
-      }
-      if (PROFILE_TEMPLATE) {
-        profile.locations = profile.locations || {};
-        if (PROFILE_TEMPLATE.locations) {
-          for (const loc in PROFILE_TEMPLATE.locations) {
-            if (!profile.locations[loc]) {
-              profile.locations[loc] = structuredClone(PROFILE_TEMPLATE.locations[loc]);
-            }
-          }
-        }
-      }
+      unlockMapsUltimate(profile);
     } else {
-      if ((isFresh || mods.safe_repair) && PROFILE_TEMPLATE) {
-        profile.real_estates = structuredClone(PROFILE_TEMPLATE.real_estates || {});
-        for (const house in profile.real_estates) {
-          profile.real_estates[house].is_bought = true;
-        }
-
-        profile.real_estate_slots = structuredClone(PROFILE_TEMPLATE.real_estate_slots || {});
-        for (const slotName in profile.real_estate_slots) {
-          profile.real_estate_slots[slotName].unlocked = true;
-          if (slotName === "apartment_95_slot_0") {
-            profile.real_estate_slots[slotName].car_id = profile.current_car_id ? profile.current_car_id.toString() : "1060";
-          } else {
-            delete profile.real_estate_slots[slotName].car_id;
-          }
-        }
-
-        if (PROFILE_TEMPLATE.locations) {
-          profile.locations = structuredClone(PROFILE_TEMPLATE.locations);
-        }
-
-        const activeCarStr = profile.current_car_id ? profile.current_car_id.toString() : "1060";
-        profile.car_to_real_estate_slot = {
-          keys: [activeCarStr],
-          values: ["apartment_95_slot_0"]
-        };
-      } else {
-        // Keep live account profile cars and slots unchanged, but ensure bought and unlocked (aligns with bot)
-        profile.real_estates = profile.real_estates || {};
-        if (PROFILE_TEMPLATE && Object.keys(profile.real_estates).length === 0) {
-          profile.real_estates = structuredClone(PROFILE_TEMPLATE.real_estates || {});
-        }
-        for (const house in profile.real_estates) {
-          profile.real_estates[house].is_bought = true;
-        }
-
-        profile.real_estate_slots = profile.real_estate_slots || {};
-        if (PROFILE_TEMPLATE && Object.keys(profile.real_estate_slots).length === 0) {
-          profile.real_estate_slots = structuredClone(PROFILE_TEMPLATE.real_estate_slots || {});
-        }
-        for (const slotName in profile.real_estate_slots) {
-          profile.real_estate_slots[slotName].unlocked = true;
-        }
-      }
-    }
-
-    // Ensure the current active car is mapped to at least one valid slot
-    const carsItems = profile.cars?.items || {};
-    const currentCarId = profile.current_car_id;
-    if (currentCarId && carsItems[currentCarId]) {
-      profile.car_to_real_estate_slot = profile.car_to_real_estate_slot || { keys: [], values: [] };
-      const carStr = currentCarId.toString();
-
-      // Ensure key mapping exists and is not duplicated
-      const existingIdx = profile.car_to_real_estate_slot.keys.indexOf(carStr);
-      if (existingIdx !== -1) {
-        // Already mapped. Ensure the slot exists and is unlocked
-        const assignedSlot = profile.car_to_real_estate_slot.values[existingIdx];
-        profile.real_estate_slots = profile.real_estate_slots || {};
-        profile.real_estate_slots[assignedSlot] = profile.real_estate_slots[assignedSlot] || { unlocked: true };
-        profile.real_estate_slots[assignedSlot].unlocked = true;
-        profile.real_estate_slots[assignedSlot].car_id = carStr;
-      } else {
-        // Map to a fallback slot
-        profile.real_estates = profile.real_estates || {};
-        profile.real_estates["apartment_95"] = { is_bought: true };
-        profile.real_estate_slots = profile.real_estate_slots || {};
-        profile.real_estate_slots["apartment_95_slot_0"] = { unlocked: true, car_id: carStr };
-        profile.car_to_real_estate_slot.keys.push(carStr);
-        profile.car_to_real_estate_slot.values.push("apartment_95_slot_0");
-      }
+      ensureRealEstateSlotsForCars(profile);
     }
   }
 
@@ -1971,157 +2054,62 @@ export function modifyProfile(base: any, mods: {
   // ── Single Car Injection ──
   if (mods.inject_car) {
     console.log(`[MODIFY PROFILE] Injecting single car: ${mods.inject_car}...`);
-    profile.cars = profile.cars || { seed: 0, items: {} };
-    profile.cars.items = profile.cars.items || {};
-    profile.car_models = profile.car_models || { keys: [], values: [] };
-
-    // Try to find the template car object matching mods.inject_car
+    const allCars = { ...getPremiumCarData((mods as any)._db), ...getRegularCarData((mods as any)._db) };
     let carTemplateObj: any = null;
-    if (PROFILE_TEMPLATE && PROFILE_TEMPLATE.cars && PROFILE_TEMPLATE.cars.items) {
-      for (const cid in PROFILE_TEMPLATE.cars.items) {
-        if (PROFILE_TEMPLATE.cars.items[cid].__desc_id === mods.inject_car) {
-          carTemplateObj = structuredClone(PROFILE_TEMPLATE.cars.items[cid]);
-          break;
-        }
-      }
-      // If not found in template (custom value typed by user), copy the first car template and rename __desc_id & body_kit
-      if (!carTemplateObj) {
-        const firstCarKey = Object.keys(PROFILE_TEMPLATE.cars.items)[0];
-        if (firstCarKey) {
-          carTemplateObj = structuredClone(PROFILE_TEMPLATE.cars.items[firstCarKey]);
-          carTemplateObj.__desc_id = mods.inject_car;
-          carTemplateObj.body_kit = `${mods.inject_car}_stock_bkit`;
-        }
+    for (const cid of Object.keys(allCars)) {
+      if (allCars[cid]?.__desc_id === mods.inject_car) {
+        carTemplateObj = structuredClone(allCars[cid]);
+        break;
       }
     }
-
-    if (carTemplateObj) {
-      // Find a new unique ID for this car (numeric max + 1)
-      const existingIds = Object.keys(profile.cars.items).map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-      const newId = existingIds.length > 0 ? (Math.max(...existingIds) + 1).toString() : "1001";
-
-      profile.cars.items[newId] = carTemplateObj;
-
-      // Add to car_models if not already present
-      if (!profile.car_models.keys.includes(mods.inject_car)) {
-        profile.car_models.keys.push(mods.inject_car);
-        profile.car_models.values.push(1);
-      }
-
-      // Make this injected car the current active car!
-      profile.current_car_id = typeof profile.current_car_id === "number" ? parseInt(newId, 10) : newId;
-
-      // Map this new active car to apartment_95_slot_0
-      profile.real_estates = profile.real_estates || {};
-      profile.real_estates["apartment_95"] = { is_bought: true };
-      profile.real_estate_slots = profile.real_estate_slots || {};
-      profile.real_estate_slots["apartment_95_slot_0"] = { unlocked: true, car_id: newId };
-      profile.car_to_real_estate_slot = profile.car_to_real_estate_slot || { keys: [], values: [] };
-
-      const idx = profile.car_to_real_estate_slot.keys.indexOf(newId);
-      if (idx !== -1) {
-        profile.car_to_real_estate_slot.values[idx] = "apartment_95_slot_0";
-      } else {
-        profile.car_to_real_estate_slot.keys.push(newId);
-        profile.car_to_real_estate_slot.values.push("apartment_95_slot_0");
-      }
+    if (!carTemplateObj) {
+      carTemplateObj = makeCarEntry(mods.inject_car, "1001");
     }
+    const singleDict: Record<string, any> = { "1001": carTemplateObj };
+    implantCarsProfile(profile, singleDict);
   }
 
   // ── Multiple Cars Injection ──
-  if (mods.inject_cars && Array.isArray(mods.inject_cars)) {
+  if (mods.inject_cars && Array.isArray(mods.inject_cars) && mods.inject_cars.length > 0) {
     console.log(`[MODIFY PROFILE] Injecting multiple cars: ${mods.inject_cars.join(", ")}...`);
-    profile.cars = profile.cars || { seed: 0, items: {} };
-    profile.cars.items = profile.cars.items || {};
-    profile.car_models = profile.car_models || { keys: [], values: [] };
-
-    let lastNewId = "";
-    for (const carId of mods.inject_cars) {
-      let carTemplateObj: any = null;
-      if (PROFILE_TEMPLATE && PROFILE_TEMPLATE.cars && PROFILE_TEMPLATE.cars.items) {
-        for (const cid in PROFILE_TEMPLATE.cars.items) {
-          if (PROFILE_TEMPLATE.cars.items[cid].__desc_id === carId) {
-            carTemplateObj = structuredClone(PROFILE_TEMPLATE.cars.items[cid]);
-            break;
-          }
-        }
-        if (!carTemplateObj) {
-          const firstCarKey = Object.keys(PROFILE_TEMPLATE.cars.items)[0];
-          if (firstCarKey) {
-            carTemplateObj = structuredClone(PROFILE_TEMPLATE.cars.items[firstCarKey]);
-            carTemplateObj.__desc_id = carId;
-            carTemplateObj.body_kit = `${carId}_stock_bkit`;
-          }
+    const allCars = { ...getPremiumCarData((mods as any)._db), ...getRegularCarData((mods as any)._db) };
+    const toInject: Record<string, any> = {};
+    for (let i = 0; i < mods.inject_cars.length; i++) {
+      const carModel = mods.inject_cars[i];
+      let carObj: any = null;
+      for (const cid of Object.keys(allCars)) {
+        if (allCars[cid]?.__desc_id === carModel) {
+          carObj = structuredClone(allCars[cid]);
+          break;
         }
       }
-
-      if (carTemplateObj) {
-        const existingIds = Object.keys(profile.cars.items).map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-        const newId = existingIds.length > 0 ? (Math.max(...existingIds) + 1).toString() : "1001";
-
-        profile.cars.items[newId] = carTemplateObj;
-        lastNewId = newId;
-
-        if (!profile.car_models.keys.includes(carId)) {
-          profile.car_models.keys.push(carId);
-          profile.car_models.values.push(1);
-        }
-
-        profile.real_estates = profile.real_estates || {};
-        profile.real_estates["apartment_95"] = { is_bought: true };
-        profile.real_estate_slots = profile.real_estate_slots || {};
-        profile.real_estate_slots["apartment_95_slot_0"] = { unlocked: true, car_id: newId };
-        profile.car_to_real_estate_slot = profile.car_to_real_estate_slot || { keys: [], values: [] };
-
-        const idx = profile.car_to_real_estate_slot.keys.indexOf(newId);
-        if (idx !== -1) {
-          profile.car_to_real_estate_slot.values[idx] = "apartment_95_slot_0";
-        } else {
-          profile.car_to_real_estate_slot.keys.push(newId);
-          profile.car_to_real_estate_slot.values.push("apartment_95_slot_0");
-        }
+      if (!carObj) {
+        carObj = makeCarEntry(carModel, (1001 + i).toString());
       }
+      toInject[(1001 + i).toString()] = carObj;
     }
-
-    if (lastNewId) {
-      profile.current_car_id = typeof profile.current_car_id === "number" ? parseInt(lastNewId, 10) : lastNewId;
-    }
+    implantCarsProfile(profile, toInject);
   }
 
   // ── Inject Custom Amount of Random Cars ──
-  if (mods.random_cars_count) {
+  if (mods.random_cars_count && mods.random_cars_count > 0) {
     console.log(`[MODIFY PROFILE] Injecting ${mods.random_cars_count} random cars...`);
-    profile.cars = profile.cars || { seed: 0, items: {} };
-    profile.cars.items = profile.cars.items || {};
-    profile.car_models = profile.car_models || { keys: [], values: [] };
-
-    if (PROFILE_TEMPLATE && PROFILE_TEMPLATE.cars && PROFILE_TEMPLATE.cars.items) {
-      const templateKeys = Object.keys(PROFILE_TEMPLATE.cars.items);
-      if (templateKeys.length > 0) {
-        for (let i = 0; i < mods.random_cars_count; i++) {
-          const randKey = templateKeys[Math.floor(Math.random() * templateKeys.length)];
-          const carObj = structuredClone(PROFILE_TEMPLATE.cars.items[randKey]);
-          const descId = carObj.__desc_id;
-
-          // Find new unique ID for the car
-          const existingIds = Object.keys(profile.cars.items).map(id => parseInt(id, 10)).filter(id => !isNaN(id));
-          const newId = existingIds.length > 0 ? (Math.max(...existingIds) + 1).toString() : "1001";
-
-          profile.cars.items[newId] = carObj;
-
-          // Update car_models
-          const modelIdx = profile.car_models.keys.indexOf(descId);
-          if (modelIdx !== -1) {
-            const currentCount = parseInt(profile.car_models.values[modelIdx], 10) || 0;
-            profile.car_models.values[modelIdx] = (currentCount + 1).toString();
-          } else {
-            profile.car_models.keys.push(descId);
-            profile.car_models.values.push("1");
-          }
-        }
-      }
+    const pool = { ...getPremiumCarData((mods as any)._db), ...getRegularCarData((mods as any)._db) };
+    const poolEntries = Object.entries(pool);
+    if (poolEntries.length > 0) {
+      const count = Math.min(mods.random_cars_count, poolEntries.length);
+      const shuffled = [...poolEntries].sort(() => 0.5 - Math.random());
+      const selected = shuffled.slice(0, count);
+      const selectedDict: Record<string, any> = {};
+      selected.forEach(([k, v], idx) => {
+        selectedDict[(1001 + idx).toString()] = v;
+      });
+      implantCarsProfile(profile, selectedDict);
     }
   }
+
+  return profile;
+}
 
   return profile;
 }
@@ -2382,12 +2370,15 @@ app.post(["/api/auth/session", "/auth/session"], async (req, res) => {
   return res.status(401).json({ success: false, message: "Invalid session" });
 });
 
-// Get cars list
+// Get cars list (189 cars)
 app.get(["/api/cars", "/cars"], (req, res) => {
   res.json({
     success: true,
     total: ALL_CAR_MODELS.length,
-    cars: ALL_CAR_MODELS
+    cars: ALL_CAR_MODELS.map((descId, idx) => ({
+      id: (1001 + idx).toString(),
+      descId
+    }))
   });
 });
 
@@ -2397,7 +2388,10 @@ app.get(["/api/admin/strings", "/admin/strings"], authMiddleware, async (req, re
   if (role !== "owner" && role !== "admin") {
     return res.status(403).json({ success: false, message: "Forbidden." });
   }
-  const db = await loadKeysDb();
+  const db = await loadKeysDb(true);
+  const regCars = getRegularCarData(db);
+  const premCars = getPremiumCarData(db);
+
   res.json({
     success: true,
     regular_cars_string: db.custom_regular_cars_string || "",
@@ -2408,6 +2402,9 @@ app.get(["/api/admin/strings", "/admin/strings"], authMiddleware, async (req, re
     carsString: db.custom_premium_cars_string || db.custom_cars_string || "",
     blueprint_string: db.custom_blueprint_string || "",
     blueprintString: db.custom_blueprint_string || "",
+    car_count: Object.keys(regCars).length,
+    premium_car_count: Object.keys(premCars).length,
+    blueprint_loaded: !!(db.custom_blueprint_string || PROFILE_TEMPLATE),
     updatedAt: db.strings_updated_at || Date.now()
   });
 });
@@ -2428,31 +2425,75 @@ app.post(["/api/admin/strings", "/admin/strings"], authMiddleware, async (req, r
     blueprintString
   } = req.body;
 
-  const db = await loadKeysDb();
+  const db = await loadKeysDb(true);
 
-  if (regular_cars_string !== undefined || regularCarsString !== undefined) {
-    db.custom_regular_cars_string = regular_cars_string ?? regularCarsString;
-    _cachedRegularCarsTemplate = null;
-    _cachedRegularCarsStringSrc = "";
+  const regInput = (regular_cars_string ?? regularCarsString)?.trim();
+  if (regInput !== undefined) {
+    if (regInput === "" || regInput.toLowerCase() === "clear" || regInput.toLowerCase() === "default") {
+      delete db.custom_regular_cars_string;
+    } else {
+      const extracted = extractCarsFromFileContent(regInput);
+      if (!extracted || Object.keys(extracted).length === 0) {
+        return res.status(400).json({ success: false, message: "Invalid regular cars data - no valid cars found." });
+      }
+      db.custom_regular_cars_string = compressData({ cars: { items: extracted, seed: 1000 } });
+    }
+    _cachedRegularCars = null;
+    _cachedRegularCarsSrc = "";
   }
-  if (premium_cars_string !== undefined || premiumCarsString !== undefined) {
-    db.custom_premium_cars_string = premium_cars_string ?? premiumCarsString;
-    db.custom_cars_string = db.custom_premium_cars_string;
-    _cachedPremiumCarsTemplate = null;
-    _cachedPremiumCarsStringSrc = "";
-  } else if (cars_string !== undefined || carsString !== undefined) {
-    db.custom_premium_cars_string = cars_string ?? carsString;
-    db.custom_cars_string = cars_string ?? carsString;
-    _cachedPremiumCarsTemplate = null;
-    _cachedPremiumCarsStringSrc = "";
+
+  const premInput = (premium_cars_string ?? premiumCarsString ?? cars_string ?? carsString)?.trim();
+  if (premInput !== undefined) {
+    if (premInput === "" || premInput.toLowerCase() === "clear" || premInput.toLowerCase() === "default") {
+      delete db.custom_premium_cars_string;
+      delete db.custom_cars_string;
+    } else {
+      const extracted = extractCarsFromFileContent(premInput);
+      if (!extracted || Object.keys(extracted).length === 0) {
+        return res.status(400).json({ success: false, message: "Invalid premium cars data - no valid cars found." });
+      }
+      const compressed = compressData({ cars: { items: extracted, seed: 1000 } });
+      db.custom_premium_cars_string = compressed;
+      db.custom_cars_string = compressed;
+    }
+    _cachedPremiumCars = null;
+    _cachedPremiumCarsSrc = "";
   }
-  if (blueprint_string !== undefined || blueprintString !== undefined) {
-    db.custom_blueprint_string = blueprint_string ?? blueprintString;
+
+  const bpInput = (blueprint_string ?? blueprintString)?.trim();
+  if (bpInput !== undefined) {
+    if (bpInput === "" || bpInput.toLowerCase() === "clear" || bpInput.toLowerCase() === "default") {
+      delete db.custom_blueprint_string;
+    } else {
+      const decompressed = decompressData(bpInput);
+      if (!decompressed || typeof decompressed !== "object") {
+        return res.status(400).json({ success: false, message: "Invalid blueprint data - unable to parse or decompress." });
+      }
+      db.custom_blueprint_string = compressData(decompressed);
+    }
   }
+
   db.strings_updated_at = Date.now();
-
   await saveKeysDb(db);
-  res.json({ success: true, message: "Strings updated successfully." });
+
+  const regCars = getRegularCarData(db);
+  const premCars = getPremiumCarData(db);
+
+  res.json({
+    success: true,
+    message: "Strings updated successfully.",
+    regular_cars_string: db.custom_regular_cars_string || "",
+    regularCarsString: db.custom_regular_cars_string || "",
+    premium_cars_string: db.custom_premium_cars_string || db.custom_cars_string || "",
+    premiumCarsString: db.custom_premium_cars_string || db.custom_cars_string || "",
+    cars_string: db.custom_premium_cars_string || db.custom_cars_string || "",
+    carsString: db.custom_premium_cars_string || db.custom_cars_string || "",
+    blueprint_string: db.custom_blueprint_string || "",
+    blueprintString: db.custom_blueprint_string || "",
+    car_count: Object.keys(regCars).length,
+    premium_car_count: Object.keys(premCars).length,
+    updatedAt: db.strings_updated_at
+  });
 });
 
 // Account Profile Extractor Endpoint (Login + Extract Profile String / JSON)
@@ -2475,13 +2516,17 @@ app.post(["/api/carx/extract", "/carx/extract"], authMiddleware, async (req, res
     }
 
     const rawProfile = profileRes.profile;
+    const carsMap = extractCarsFromObject(rawProfile) || {};
     let extractedData = rawProfile;
 
     // If extracting specific cars block
     if (target === "cars") {
       extractedData = {
-        cars: rawProfile.cars || { seed: 0, items: {} },
-        car_models: rawProfile.car_models || { keys: [], values: [] },
+        cars: { seed: 1000, items: carsMap },
+        car_models: {
+          keys: Object.keys(carsMap),
+          values: Object.values(carsMap).map((v: any) => v.__desc_id || "")
+        },
         real_estates: rawProfile.real_estates || {},
         real_estate_slots: rawProfile.real_estate_slots || {},
         car_to_real_estate_slot: rawProfile.car_to_real_estate_slot || { keys: [], values: [] },
@@ -2489,15 +2534,12 @@ app.post(["/api/carx/extract", "/carx/extract"], authMiddleware, async (req, res
       };
     }
 
-    const jsonString = JSON.stringify(extractedData);
-    let outputString = jsonString;
-
+    let outputString = JSON.stringify(extractedData);
     if (format === "compressed" || format === "base64") {
-      const gzipped = zlib.gzipSync(Buffer.from(jsonString, "utf-8"));
-      outputString = gzipped.toString("base64");
+      outputString = compressData(extractedData);
     }
 
-    const totalCarsCount = rawProfile.cars?.items ? Object.keys(rawProfile.cars.items).length : 0;
+    const totalCarsCount = Object.keys(carsMap).length || (rawProfile.cars?.items ? Object.keys(rawProfile.cars.items).length : 0);
     const stats = extractProfileStats(rawProfile, false);
 
     return res.json({

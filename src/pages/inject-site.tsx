@@ -986,7 +986,7 @@ function InjectionPanel({
   ];
 
   const CAR_MODES = [
-    { v: CarsInjectInputMode.all, l: "🏎️ All Cars", sub: `${totalCars || 69} Supercars` },
+    { v: CarsInjectInputMode.all, l: "🏎️ All Cars", sub: `${totalCars || 189} Supercars` },
     { v: CarsInjectInputMode.premium, l: "👑 Premium", sub: "Max Tuned Kits" },
     { v: CarsInjectInputMode.regular, l: "🚗 Regular", sub: "Standard Garage" },
     { v: CarsInjectInputMode.custom, l: "🔢 Custom", sub: "Pick count" },
@@ -1065,7 +1065,7 @@ function InjectionPanel({
         />
         <StatTelemetryCard
           label="Supercars"
-          value={profile?.cars !== undefined ? `${profile.cars} Cars` : `${totalCars || 69} Cars`}
+          value={profile?.cars !== undefined ? `${profile.cars} Cars` : `${totalCars || 189} Cars`}
           icon="🏎️"
           accent="from-purple-400 to-pink-500"
           sublabel="Garage count"

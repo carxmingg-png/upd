@@ -428,18 +428,18 @@ function StringEditorCard({
             Upload File
           </button>
           <CopyButton text={value} label="Copy String" />
-          {value && (
+          {value ? (
             <button
               onClick={() => onChange("")}
               className="px-2.5 py-1.5 bg-zinc-800/60 hover:bg-red-950/40 text-zinc-400 hover:text-red-400 border border-zinc-700/60 hover:border-red-500/40 rounded-xl text-xs transition-all"
-              title="Clear string"
+              title="Clear / Revert to Default"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
-          )}
+          ) : null}
           <button
             onClick={onSave}
-            disabled={isSaving || !value}
+            disabled={isSaving || (!isDirty && value === originalValue)}
             className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-black rounded-xl text-xs transition-all disabled:opacity-40 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
           >
             {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
@@ -668,7 +668,6 @@ function StringsTab({ adminToken }: { adminToken: string }) {
   const [regularValue, setRegularValue] = useState("");
   const [premiumValue, setPremiumValue] = useState("");
   const [bpValue, setBpValue] = useState("");
-  const [initialized, setInitialized] = useState(false);
 
   const [regularDirty, setRegularDirty] = useState(false);
   const [premiumDirty, setPremiumDirty] = useState(false);
@@ -677,19 +676,24 @@ function StringsTab({ adminToken }: { adminToken: string }) {
   const stringsQuery = useGetStrings({ adminToken }, { query: { queryKey: getGetStringsQueryKey({ adminToken }) } });
 
   useEffect(() => {
-    if (stringsQuery.data && !initialized) {
+    if (stringsQuery.data) {
       const d = stringsQuery.data;
-      setRegularValue(d.regularCarsString || d.regular_cars_string || "");
-      setPremiumValue(d.premiumCarsString || d.premium_cars_string || d.carsString || d.cars_string || "");
-      setBpValue(d.blueprintString || d.blueprint_string || "");
-      setInitialized(true);
+      if (!regularDirty) {
+        setRegularValue(d.regularCarsString || d.regular_cars_string || "");
+      }
+      if (!premiumDirty) {
+        setPremiumValue(d.premiumCarsString || d.premium_cars_string || d.carsString || d.cars_string || "");
+      }
+      if (!bpDirty) {
+        setBpValue(d.blueprintString || d.blueprint_string || "");
+      }
     }
-  }, [stringsQuery.data, initialized]);
+  }, [stringsQuery.data, regularDirty, premiumDirty, bpDirty]);
 
   const updateStrings = useUpdateStrings({
     mutation: {
-      onSuccess: (_data, variables) => {
-        toast({ title: "✅ Saved Successfully", description: "Car strings updated on server database" });
+      onSuccess: (data: any, variables) => {
+        toast({ title: "✅ Saved Successfully", description: data?.message || "Car strings updated on server database" });
         const v = variables.data;
         if (v.regularCarsString !== undefined && v.regularCarsString !== null) setRegularDirty(false);
         if (v.premiumCarsString !== undefined && v.premiumCarsString !== null) setPremiumDirty(false);
@@ -725,15 +729,41 @@ function StringsTab({ adminToken }: { adminToken: string }) {
     reader.readAsText(file);
   };
 
+  const handleRefresh = async () => {
+    setRegularDirty(false);
+    setPremiumDirty(false);
+    setBpDirty(false);
+    const res = await stringsQuery.refetch();
+    if (res.data) {
+      const d = res.data;
+      setRegularValue(d.regularCarsString || d.regular_cars_string || "");
+      setPremiumValue(d.premiumCarsString || d.premium_cars_string || d.carsString || d.cars_string || "");
+      setBpValue(d.blueprintString || d.blueprint_string || "");
+      toast({ title: "🔄 Refreshed", description: "Strings reloaded directly from server database." });
+    }
+  };
+
   const handleSaveIndividual = (target: "regular" | "premium" | "blueprint") => {
     const payload: any = { adminToken };
-    if (target === "regular") payload.regularCarsString = regularValue;
-    if (target === "premium") payload.premiumCarsString = premiumValue;
-    if (target === "blueprint") payload.blueprintString = bpValue;
+    if (target === "regular") {
+      payload.regularCarsString = regularValue;
+      setRegularDirty(false);
+    }
+    if (target === "premium") {
+      payload.premiumCarsString = premiumValue;
+      setPremiumDirty(false);
+    }
+    if (target === "blueprint") {
+      payload.blueprintString = bpValue;
+      setBpDirty(false);
+    }
     updateStrings.mutate({ data: payload });
   };
 
   const handleSaveAll = () => {
+    setRegularDirty(false);
+    setPremiumDirty(false);
+    setBpDirty(false);
     updateStrings.mutate({
       data: {
         adminToken,
@@ -770,7 +800,7 @@ function StringsTab({ adminToken }: { adminToken: string }) {
 
         <div className="flex items-center gap-2 self-end sm:self-center">
           <button
-            onClick={() => stringsQuery.refetch()}
+            onClick={handleRefresh}
             disabled={stringsQuery.isFetching}
             className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-xl text-xs transition-all disabled:opacity-50"
             title="Refresh from server"
@@ -779,7 +809,7 @@ function StringsTab({ adminToken }: { adminToken: string }) {
           </button>
           <button
             onClick={handleSaveAll}
-            disabled={updateStrings.isPending}
+            disabled={updateStrings.isPending || !anyDirty}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-black font-black rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-50 shadow-[0_0_20px_rgba(245,158,11,0.25)]"
           >
             {updateStrings.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
