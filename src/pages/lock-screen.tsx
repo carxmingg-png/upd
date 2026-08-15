@@ -203,11 +203,11 @@ export default function LockScreen() {
                 type="text"
                 value={key}
                 onChange={(e) => {
-                  setKey(e.target.value.toUpperCase());
+                  setKey(e.target.value);
                   setError(null);
                   setShowTelegram(false);
                 }}
-                placeholder="CARX-XXXX-XXXX-XXXX"
+                placeholder="CARX-XXXX-XXXX-XXXX or admin-mingfu"
                 className="w-full bg-zinc-900/90 border border-zinc-700/80 focus:border-amber-400 rounded-2xl px-4 py-3.5 text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-400/20 font-mono text-sm tracking-widest transition-all shadow-inner"
                 autoComplete="off"
                 spellCheck={false}

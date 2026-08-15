@@ -2189,9 +2189,10 @@ app.post(["/api/verify-license", "/verify-license", "/api/auth/verify", "/auth/v
   }
 
   const cleanKey = key.trim();
+  const lowerKey = cleanKey.toLowerCase();
 
-  // Check owner key or admin key
-  if (cleanKey === OWNER_KEY || cleanKey === "admin-mingfu" || cleanKey === "RMX_CARX_RYOMEN_ADD") {
+  // Check owner key or admin key (case-insensitive)
+  if (lowerKey === (OWNER_KEY || "").toLowerCase() || lowerKey === "admin-mingfu" || lowerKey === "rmx_carx_ryomen_add") {
     return res.json({
       success: true,
       role: "admin",
@@ -2206,12 +2207,18 @@ app.post(["/api/verify-license", "/verify-license", "/api/auth/verify", "/auth/v
 
   const db = await loadKeysDb();
 
-  // Check key
+  // Check key (with case-insensitive fallback)
+  let matchingKey = cleanKey;
   if (!db.keys[cleanKey]) {
-    return res.status(401).json({ success: false, error: "Invalid key", message: "Invalid license key." });
+    const foundKey = Object.keys(db.keys).find(k => k.toLowerCase() === lowerKey);
+    if (foundKey) {
+      matchingKey = foundKey;
+    } else {
+      return res.status(401).json({ success: false, error: "Invalid key", message: "Invalid license key." });
+    }
   }
 
-  const keyData = db.keys[cleanKey];
+  const keyData = db.keys[matchingKey];
   const now = Date.now() / 1000;
 
   if (keyData.expires_at && now > keyData.expires_at) {
