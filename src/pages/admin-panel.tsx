@@ -495,11 +495,15 @@ function AccountExtractorForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [format, setFormat] = useState<"compressed" | "json">("compressed");
+  const [targetPart, setTargetPart] = useState<string>("cars");
   const [targetSlot, setTargetSlot] = useState<"regular" | "premium" | "blueprint">("premium");
   const [extractedData, setExtractedData] = useState<{
     carsCount: number;
     rawStr: string;
+    jsonStr?: string;
+    compressedStr?: string;
     stats?: any;
+    target?: string;
   } | null>(null);
 
   const extractMutation = useExtractAccount({
@@ -510,11 +514,14 @@ function AccountExtractorForm({
         setExtractedData({
           carsCount: data.totalCars || 0,
           rawStr,
+          jsonStr: data.jsonString || JSON.stringify(data.rawProfile || {}, null, 2),
+          compressedStr: data.compressedString || rawStr,
           stats: data.stats,
+          target: data.target || targetPart,
         });
         toast({
-          title: "🎉 Account Profile Extracted!",
-          description: `Found ${data.totalCars || 0} cars in account garage.`,
+          title: `🎉 Extracted ${targetPart.toUpperCase()}!`,
+          description: `Successfully extracted ${targetPart} (${data.totalCars || 0} cars in garage).`,
         });
       },
       onError: (err: any) => {
@@ -542,7 +549,7 @@ function AccountExtractorForm({
         email: email.trim(),
         password: password.trim(),
         format,
-        target: targetSlot === "blueprint" ? "full" : "cars",
+        target: targetPart,
         adminToken,
       },
     });
@@ -551,12 +558,25 @@ function AccountExtractorForm({
   const handleApplyToSlot = () => {
     if (!extractedData?.rawStr) return;
     playSuccess();
-    onExtracted(extractedData.rawStr, targetSlot);
+    onExtracted(extractedData.compressedStr || extractedData.rawStr, targetSlot);
+  };
+
+  const handleDownloadFile = (content: string, ext: "json" | "txt") => {
+    const blob = new Blob([content], { type: ext === "json" ? "application/json" : "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `carx_${targetPart}_${Date.now()}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({ title: "📥 Downloaded", description: `Saved carx_${targetPart}_${Date.now()}.${ext}` });
   };
 
   return (
     <div className="mt-4 space-y-4">
-      <form onSubmit={handleExtract} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
+      <form onSubmit={handleExtract} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
         <div>
           <label className="block text-[11px] font-mono font-bold text-zinc-400 mb-1">
             CarX Account Email
@@ -587,16 +607,49 @@ function AccountExtractorForm({
 
         <div>
           <label className="block text-[11px] font-mono font-bold text-zinc-400 mb-1">
-            Target Config Slot
+            Extract Part
+          </label>
+          <select
+            value={targetPart}
+            onChange={(e) => {
+              const val = e.target.value;
+              setTargetPart(val);
+              if (val === "full" || val === "blueprint") setTargetSlot("blueprint");
+              else if (val === "cars") setTargetSlot("premium");
+            }}
+            className="w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500/50"
+          >
+            <option value="cars">🚗 Cars in Garage (189+)</option>
+            <option value="full">📄 Full Profile Blueprint</option>
+            <option value="maps">🗺️ Unlocked Maps</option>
+            <option value="resources">💰 Resources (Cash/Gold/XP)</option>
+            <option value="premium">⭐ Premium Status</option>
+            <option value="stats">📊 Player Statistics</option>
+            <option value="real_estates">🏠 Real Estate Properties</option>
+            <option value="slots">🏢 Garage Slots</option>
+            <option value="locations">📍 Map Locations</option>
+            <option value="clubs">🎯 All Clubs</option>
+            <option value="tuning">🏎️ Tuning Parts</option>
+            <option value="styling">🎨 Styling Visuals</option>
+            <option value="shop_packs">🛍️ Shop Owned Packs</option>
+            <option value="battle_pass">🎟️ Battle Pass Rewards</option>
+            <option value="quests">✅ Quests</option>
+            <option value="achievements">🏆 Achievements</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-mono font-bold text-zinc-400 mb-1">
+            Apply Target Slot
           </label>
           <select
             value={targetSlot}
             onChange={(e) => setTargetSlot(e.target.value as any)}
             className="w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500/50"
           >
-            <option value="premium">👑 Premium Cars String</option>
-            <option value="regular">🚗 Regular Cars String</option>
-            <option value="blueprint">📄 Blueprint String</option>
+            <option value="premium">👑 Premium Cars Slot</option>
+            <option value="regular">🚗 Regular Cars Slot</option>
+            <option value="blueprint">📄 Blueprint Slot</option>
           </select>
         </div>
 
@@ -613,7 +666,7 @@ function AccountExtractorForm({
           ) : (
             <>
               <Download className="w-3.5 h-3.5" />
-              <span>Extract Strings</span>
+              <span>Extract Data</span>
             </>
           )}
         </button>
@@ -624,31 +677,54 @@ function AccountExtractorForm({
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+          className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3"
         >
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm">
+            <div className="w-9 h-9 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-base">
               ✓
             </div>
             <div>
-              <p className="text-xs font-bold text-emerald-300">
-                Successfully extracted {extractedData.carsCount} Cars ({formatBytes(extractedData.rawStr.length)})
+              <p className="text-xs font-bold text-emerald-300 flex items-center gap-2">
+                <span>Extracted [{extractedData.target?.toUpperCase()}]</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">
+                  {formatBytes(extractedData.rawStr.length)}
+                </span>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  🚗 {extractedData.carsCount} Cars
+                </span>
               </p>
-              <p className="text-[11px] text-zinc-400">
-                Level {extractedData.stats?.level || 1} • Cash: {Number(extractedData.stats?.cash || 0).toLocaleString()} • Ready to populate
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Silver: {Number(extractedData.stats?.cash || extractedData.stats?.silver || 0).toLocaleString()} • Gold: {Number(extractedData.stats?.gold || 0).toLocaleString()} • Level {extractedData.stats?.level || 1}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <CopyButton text={extractedData.rawStr} label="Copy Raw" />
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            <CopyButton text={extractedData.compressedStr || extractedData.rawStr} label="Copy Compressed" />
+            <CopyButton text={extractedData.jsonStr || extractedData.rawStr} label="Copy JSON" />
+            <button
+              type="button"
+              onClick={() => handleDownloadFile(extractedData.jsonStr || extractedData.rawStr, "json")}
+              className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg text-xs transition-all flex items-center gap-1"
+            >
+              <Download className="w-3 h-3" />
+              <span>.JSON</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDownloadFile(extractedData.compressedStr || extractedData.rawStr, "txt")}
+              className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg text-xs transition-all flex items-center gap-1"
+            >
+              <Download className="w-3 h-3" />
+              <span>.TXT</span>
+            </button>
             <button
               type="button"
               onClick={handleApplyToSlot}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-lg text-xs transition-all shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-lg text-xs transition-all shadow-[0_0_10px_rgba(16,185,129,0.3)]"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Apply to {targetSlot.toUpperCase()} Card</span>
+              <span>Apply to {targetSlot.toUpperCase()}</span>
             </button>
           </div>
         </motion.div>

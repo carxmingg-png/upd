@@ -262,11 +262,125 @@ export const REAL_ESTATE_PROPERTIES = [
 
 export const EXTRA_LOCATION_KEYS = ["car_market_0", "car_showroom_0", "car_showroom_1", "car_showroom_2"];
 
-export function makeCarEntry(modelId: string, slotId: string) {
+export const CAR_KITS: Record<string, string[]> = {
+  ae86: ['stock', 'rnt'],
+  audir8: ['stock', 'rnt'],
+  audirs6avantc7: ['stock', 'rnt'],
+  audirs7: ['stock', 'rnt'],
+  bmw_i8: ['stock', 'slideperformance'],
+  bmw_m3_e36: ['stock', 'missile'],
+  bmw_m3_e92_cabrio: ['stock', 'rnt'],
+  bmw_z4_e86: ['stock', 'rnt'],
+  bmwe30m3: ['stock', 'rnt'],
+  bmwe31: ['stock', 'rnt'],
+  bmwe46m3: ['stock', 'proflow'],
+  bmwm2g87: ['stock', 'streetx'],
+  bmwm3g81_touring: ['stock', 'streetx'],
+  bmwm4: ['stock', 'dmaster'],
+  bmwm4g82: ['stock', 'streetx'],
+  bmwm5e34: ['stock', 'missile'],
+  bmwm5e39_vagon: ['stock', 'streetx'],
+  bmwm5e60: ['stock', 'missile'],
+  bmwm5f90: ['stock', 'cbw'],
+  bmwm5x5: ['stock', 'rnt'],
+  bmwm6e24: ['stock', 'streetx'],
+  charger: ['stock', 'cbw'],
+  chevroletcamaro2016: ['stock', 'rnt'],
+  chevroletchevelless1970: ['stock', 'streetx'],
+  chevycamaro70: ['stock', 'cbw'],
+  civic: ['stock'],
+  civicek9: ['stock', 'slideperformance'],
+  corvettec3: ['stock', 'streetx'],
+  corvettec6: ['stock', 'missile'],
+  corvettec7: ['stock', 'dmaster'],
+  dodgechallengerrt: ['stock', 'missile'],
+  dodgecharger2020: ['stock', 'streetx'],
+  ferrarif40: ['stock', 'rnt'],
+  fordfocusst2019: ['stock', 'streetx'],
+  fordgt_mk2: ['stock', 'cbw'],
+  golfgti: ['stock', 'streetx'],
+  hondas2000: ['stock'],
+  hotrod: ['stock'],
+  infinity_q60: ['stock', 'dmaster'],
+  jaguar_ftype: ['stock', 'rnt'],
+  lamborghiniaventadors: ['stock', 'rnt', 'dmaster'],
+  lamborghinidiablo: ['stock', 'rnt'],
+  lamborghinievo: ['stock', 'dmaster'],
+  lexuslfa: ['stock', 'rnt'],
+  lexusrcf: ['stock', 'rnt'],
+  lotuselise: ['stock', 'streetx'],
+  maloor82015: ['stock', 'cbw'],
+  mazdarx7: ['stock', 'rnt'],
+  mazdarx7_fc: ['stock', 'cbw'],
+  mazdarx8: ['stock', 'rnt'],
+  mbgelandewagenw463: ['stock'],
+  mclaren720s: ['stock', 'cbw'],
+  mercedesbenz190evo2: ['stock', 'rnt'],
+  mercedesbenzamggt2019: ['stock', 'streetx'],
+  mitsubishievo6: ['stock', 'rnt'],
+  mitsubishievo9: ['stock', 'streetx'],
+  mitsubishievox: ['stock', 'rnt'],
+  mustang350: ['stock', 'streetx'],
+  mustang650: ['stock', 'streetx'],
+  mustang_hoonigan: ['stock'],
+  nissan180sx: ['stock', 'slideperformance'],
+  nissan300zx: ['stock', 'cbw'],
+  nissan300zx_cabrio: ['stock', 'streetx'],
+  nissan350z: ['stock', 'cbw'],
+  nissan400z: ['stock', 'proflow'],
+  nissansilvias13: ['stock', 'missile'],
+  nissanskyline2000gtx: ['stock', 'cbw'],
+  nissanskyliner33vspec: ['stock', 'rnt'],
+  nissanz31: ['stock', 'cbw'],
+  porsche911: ['stock', 'dmaster'],
+  porsche911gt3: ['stock', 'rnt'],
+  porschesinger: ['stock', 'sharknose'],
+  silvias15: ['stock', 'proflow'],
+  skyliner32: ['stock', 'cbw'],
+  skyliner34: ['stock', 'dmaster'],
+  skyliner35: ['stock', 'streetx'],
+  subaruwrxsti: ['stock', 'dmaster'],
+  suzukicarry: ['stock', 'streetx'],
+  tesla_s_plaid: ['stock', 'cbw'],
+  toyotagr86: ['stock', 'rnt', 'dmaster'],
+  toyotagt86: ['stock', 'rnt'],
+  toyotamark2_100: ['stock', 'rnt'],
+  toyotasupra2020: ['stock', 'rnt', 'streetx'],
+  toyotasupraa70: ['stock', 'streetx'],
+  toyotasuprarz: ['stock', 'cbw'],
+  toyotayarisgr2020: ['stock'],
+  van: ['stock'],
+  vantage: ['stock', 'cbw'],
+  viper: ['stock', 'cbw'],
+  vipersrt10: ['stock', 'rnt']
+};
+
+export function makeCarEntry(modelId: string, slotId: string, kitSuffix = "stock") {
+  const availableKits = CAR_KITS[modelId] || ["stock"];
+  const selectedKit = availableKits.includes(kitSuffix) ? kitSuffix : availableKits[availableKits.length - 1];
+  const allKits = availableKits.map(k => `${modelId}_${k}_bkit`);
+
   return {
     "__desc_id": modelId,
-    "tuning": { "engine": 3, "turbo": 3, "brakes": 3, "suspension": 3, "gearbox": 3, "tires": 3 },
+    "tuning": {
+      "cells": {
+        "0": { "slot_id": 0, "stack": { "amount": 1, "id": `engine_${modelId}` } },
+        "1": { "slot_id": 1, "stack": { "amount": 1, "id": "general_transmission_racing" } },
+        "2": { "slot_id": 2, "stack": { "amount": 1, "id": "general_differential_racing" } },
+        "3": { "slot_id": 3, "stack": { "amount": 1, "id": "general_suspension_racing" } },
+        "4": { "slot_id": 4, "stack": { "amount": 1, "id": "general_brakes_racing" } },
+        "5": { "slot_id": 5, "stack": { "amount": 1, "id": "general_weight_reduction_racing" } }
+      },
+      "engine": 3,
+      "turbo": 3,
+      "brakes": 3,
+      "suspension": 3,
+      "gearbox": 3,
+      "tires": 3
+    },
     "appearance": {},
+    "body_kit": `${modelId}_${selectedKit}_bkit`,
+    "body_kit_set": { "keys": allKits },
     "mileage": 0,
     "wins": 0,
     "slot_id": slotId
@@ -277,7 +391,7 @@ export function buildBuiltinRegularCars(): Record<string, any> {
   const carsItems: Record<string, any> = {};
   ALL_CAR_MODELS.forEach((modelId, idx) => {
     const id = (1001 + idx).toString();
-    carsItems[id] = makeCarEntry(modelId, id);
+    carsItems[id] = makeCarEntry(modelId, id, "stock");
   });
   return carsItems;
 }
@@ -296,7 +410,7 @@ export function getAllBuiltinCars(): Record<string, any> {
     }
   }
 
-  // 2. Add all missing models from ALL_CAR_MODELS
+  // 2. Add all missing models from ALL_CAR_MODELS with full racing tuning & kits
   let nextId = 2000;
   for (const carId of Object.keys(result)) {
     const num = parseInt(carId, 10);
@@ -305,13 +419,103 @@ export function getAllBuiltinCars(): Record<string, any> {
 
   for (const model of ALL_CAR_MODELS) {
     if (!existingDesc.has(model)) {
-      result[String(nextId)] = makeCarEntry(model, String(nextId));
+      result[String(nextId)] = makeCarEntry(model, String(nextId), "rnt");
       existingDesc.add(model);
       nextId++;
     }
   }
 
   return result;
+}
+
+// ─── ESSENTIAL BOXES & ANTI-GHOST WORLD SPAWN INJECTOR ─────────────────────────
+export function injectNewBoxesAndAntiGhost(profile: any) {
+  if (!profile || typeof profile !== "object") return profile;
+
+  // 1. Essential Flags (Nitro & Premium)
+  profile.styling = profile.styling || {};
+  profile.styling.stock_items = Array.from(new Set([...(profile.styling.stock_items || []), "general_nitro_stock"]));
+
+  profile.has_premium = true;
+  profile.is_premium_active = true;
+  profile.is_premium_max_player = true;
+  profile.premium_timer = 99999999;
+  profile.premium_length = 99999999;
+
+  // 2. Street Pass & Rewards
+  profile.is_pass_owned = true;
+  profile.battle_pass_resource_amount = 999999;
+  profile.free_reward = { collected: true };
+  profile.paid_reward = { collected: true };
+  profile.rewards = { free: { collected: true }, paid: { collected: true } };
+
+  const bpKeys: string[] = [];
+  for (let i = 1; i <= 16; i++) {
+    for (const t of ["banner", "avatar", "frame"]) {
+      bpKeys.push(`unlock_${t}_${i}`);
+    }
+  }
+  for (let i = 1; i <= 4; i++) {
+    bpKeys.push(`unlock_emoji_${i}`);
+  }
+  profile.battle_pass_event_rewards = { keys: bpKeys };
+  profile.unlocks = { keys: bpKeys };
+
+  // 3. Game State Flags (Prevents 0 resource display & showroom preview freeze)
+  profile.has_new_cars_in_showroom = true;
+  profile.open_car_showroom_command = true;
+  profile.new_car = true;
+  profile.car_sale = true;
+  profile.special_offers_car_banner = true;
+  profile.car_showroom_preview = "car_showroom_preview";
+  profile.styling_preview = true;
+  profile.tuning_preview = true;
+  profile.car_input_control = true;
+  profile.unlock_items = true;
+  profile.car_class = "CarClass";
+  profile.car_power_class = "CarPowerClass";
+  profile.car_specific_power = "CarSpecificPower";
+  profile.car_rating = "CarRating";
+  profile.car_gear_type = "CarGearType";
+  profile.business_car_deliveries_completed = 150;
+  profile.business_part_deliveries_completed = 300;
+
+  // 4. Empty placeholder objects required by game
+  profile.friends = profile.friends || {};
+  profile.social = profile.social || {};
+  profile.achievements = profile.achievements || {};
+
+  // 5. CRITICAL: TUTORIAL + GHOST MODE / SPAWN FIX (Anti-Ghost / Anti-Freeze)
+  profile.is_tutorial_finished = true;
+  profile.tutorial_step = 100;
+  profile.is_first_start_finished = true;
+  profile.is_actual_clubs_send = true;
+  profile.has_completed_tutorial = true;
+  profile.has_seen_intro = true;
+  profile.has_seen_map_tutorial = true;
+  profile.onboarding_completed = true;
+  profile.is_new_player = false;
+  profile.has_first_drive = true;
+  profile.has_completed_onboarding = true;
+  profile.show_map_on_start = false;
+  profile.data_version = 71;
+  profile.messaging_version = 13;
+  profile.model_upgrade_version = 1;
+
+  // Force clean world spawn to prevent ghost/map-only view
+  profile.player_position = profile.player_position || {
+    x: -123.45,
+    y: 12.3,
+    z: 456.78,
+    rot_x: 0.0,
+    rot_y: 180.0,
+    rot_z: 0.0,
+    map: "industrial"
+  };
+  profile.last_map = "industrial";
+  profile.current_map = "industrial";
+
+  return profile;
 }
 
 let mongoClient: any = null;
@@ -2108,9 +2312,7 @@ export function modifyProfile(base: any, mods: {
     }
   }
 
-  return profile;
-}
-
+  injectNewBoxesAndAntiGhost(profile);
   return profile;
 }
 
@@ -2496,9 +2698,50 @@ app.post(["/api/admin/strings", "/admin/strings"], authMiddleware, async (req, r
   });
 });
 
+// ============================================================
+// CARX ACCOUNT DATA EXTRACTOR (Full Account, 19 Parts & Multi-Part Extraction)
+// ============================================================
+export const ACCOUNT_EXTRACT_PARTS: Record<string, { path: string; desc: string }> = {
+  cars: { path: "cars.items", desc: "All cars in garage" },
+  maps: { path: "game_world_parts", desc: "Unlocked maps" },
+  resources: { path: "resources", desc: "Silver, gold, XP" },
+  premium: { path: "has_premium", desc: "Street Pass status" },
+  stats: { path: "statistics", desc: "Player statistics" },
+  quests: { path: "quests", desc: "Quest progress" },
+  achievements: { path: "achievements", desc: "Achievements" },
+  business: { path: "business_car_deliveries_completed", desc: "Business progress" },
+  tuning: { path: "tuning", desc: "Tuning parts" },
+  styling: { path: "styling", desc: "Visual items" },
+  friends: { path: "friends", desc: "Friend list" },
+  real_estates: { path: "real_estates", desc: "Properties" },
+  shop_packs: { path: "shop_owned_packs", desc: "Shop packs" },
+  unlocks: { path: "unlocks", desc: "Unlocked content" },
+  battle_pass: { path: "battle_pass_event_rewards", desc: "Battle pass" },
+  locations: { path: "locations", desc: "All locations" },
+  clubs: { path: "clubs", desc: "All clubs" },
+  slots: { path: "real_estate_slots", desc: "Garage slots" },
+  races: { path: "race_generators", desc: "Race generators" },
+  blueprint: { path: "", desc: "Complete account blueprint" },
+  full: { path: "", desc: "Full account profile" }
+};
+
+function getNestedProperty(data: any, path: string): any {
+  if (!path) return data;
+  const keys = path.split(".");
+  let cur = data;
+  for (const k of keys) {
+    if (cur && typeof cur === "object" && k in cur) {
+      cur = cur[k];
+    } else {
+      return null;
+    }
+  }
+  return cur;
+}
+
 // Account Profile Extractor Endpoint (Login + Extract Profile String / JSON)
 app.post(["/api/carx/extract", "/carx/extract"], authMiddleware, async (req, res) => {
-  const { email, password, format, target } = req.body;
+  const { email, password, format, target, targets } = req.body;
   if (!email || !password) {
     return res.status(400).json({ success: false, message: "Email and password are required to extract profile." });
   }
@@ -2517,10 +2760,42 @@ app.post(["/api/carx/extract", "/carx/extract"], authMiddleware, async (req, res
 
     const rawProfile = profileRes.profile;
     const carsMap = extractCarsFromObject(rawProfile) || {};
+    const totalCarsCount = Object.keys(carsMap).length || (rawProfile.cars?.items ? Object.keys(rawProfile.cars.items).length : 0);
+    const stats = extractProfileStats(rawProfile, false);
+
+    // Multi-part extraction support
+    if (Array.isArray(targets) && targets.length > 0) {
+      const extractedParts: Record<string, any> = {};
+      const compressedParts: Record<string, string> = {};
+
+      for (const partKey of targets) {
+        const meta = ACCOUNT_EXTRACT_PARTS[partKey];
+        if (meta) {
+          const val = meta.path ? getNestedProperty(rawProfile, meta.path) : rawProfile;
+          if (val !== null && val !== undefined) {
+            extractedParts[partKey] = val;
+            compressedParts[partKey] = compressData(val);
+          }
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: `Extracted ${Object.keys(extractedParts).length} part(s) successfully! (${totalCarsCount} cars in garage)`,
+        email,
+        totalCars: totalCarsCount,
+        stats,
+        parts: extractedParts,
+        compressedParts,
+        rawProfile
+      });
+    }
+
+    // Single target extraction
+    const selectedTarget = target || "full";
     let extractedData = rawProfile;
 
-    // If extracting specific cars block
-    if (target === "cars") {
+    if (selectedTarget === "cars") {
       extractedData = {
         cars: { seed: 1000, items: carsMap },
         car_models: {
@@ -2532,24 +2807,32 @@ app.post(["/api/carx/extract", "/carx/extract"], authMiddleware, async (req, res
         car_to_real_estate_slot: rawProfile.car_to_real_estate_slot || { keys: [], values: [] },
         locations: rawProfile.locations || {}
       };
+    } else if (selectedTarget !== "full" && selectedTarget !== "blueprint") {
+      const meta = ACCOUNT_EXTRACT_PARTS[selectedTarget];
+      if (meta && meta.path) {
+        const nestedVal = getNestedProperty(rawProfile, meta.path);
+        if (nestedVal !== null && nestedVal !== undefined) {
+          extractedData = nestedVal;
+        }
+      }
     }
 
-    let outputString = JSON.stringify(extractedData);
+    let outputString = JSON.stringify(extractedData, null, 2);
+    let compressedOutput = compressData(extractedData);
     if (format === "compressed" || format === "base64") {
-      outputString = compressData(extractedData);
+      outputString = compressedOutput;
     }
-
-    const totalCarsCount = Object.keys(carsMap).length || (rawProfile.cars?.items ? Object.keys(rawProfile.cars.items).length : 0);
-    const stats = extractProfileStats(rawProfile, false);
 
     return res.json({
       success: true,
-      message: `Extracted profile successfully! (${totalCarsCount} cars found in garage)`,
+      message: `Extracted ${selectedTarget} successfully! (${totalCarsCount} cars found in garage)`,
       format: format || "json",
-      target: target || "full",
+      target: selectedTarget,
       totalCars: totalCarsCount,
       stats,
       extractedString: outputString,
+      compressedString: compressedOutput,
+      jsonString: JSON.stringify(extractedData, null, 2),
       rawProfile: extractedData
     });
   } catch (e: any) {
