@@ -1272,7 +1272,7 @@ function InjectionPanel({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white font-sans uppercase">Supercars Garage</h3>
-                  <p className="text-[10px] text-zinc-500 font-mono">69+ Tuned Vehicles</p>
+                  <p className="text-[10px] text-zinc-500 font-mono">{totalCars ? `${totalCars} Tuned Vehicles` : "Full Garage Sync"}</p>
                 </div>
               </div>
             </div>

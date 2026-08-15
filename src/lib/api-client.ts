@@ -224,3 +224,11 @@ export function useUpdateStrings(options?: any) {
     ...(options?.mutation || {}),
   });
 }
+
+export function useExtractAccount(options?: any) {
+  return useMutation({
+    mutationFn: (vars: { data: { email: string; password: string; format?: string; target?: string; adminToken?: string } }) =>
+      fetchApi("/api/carx/extract", { method: "POST", body: JSON.stringify(vars.data) }),
+    ...(options?.mutation || {}),
+  });
+}

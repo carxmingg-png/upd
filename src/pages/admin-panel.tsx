@@ -7,6 +7,7 @@ import {
   useGetStrings,
   useUpdateStrings,
   useGetCars,
+  useExtractAccount,
   getListKeysQueryKey,
   getGetStringsQueryKey,
   getGetCarsQueryKey,
@@ -18,7 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import InjectSite from "@/pages/inject-site";
 import {
   Key, Plus, Trash2, LogOut, Car, FileText, Copy, Check,
-  Upload, RefreshCw, Clock, Infinity, Calendar, ChevronDown, ChevronUp, Search, Zap
+  Upload, RefreshCw, Clock, Infinity, Calendar, ChevronDown, ChevronUp, Search, Zap, Download, ShieldCheck, Sparkles
 } from "lucide-react";
 
 import { playClick, playSuccess, playError } from "@/lib/sound";
@@ -483,6 +484,179 @@ function StringEditorCard({
   );
 }
 
+function AccountExtractorForm({
+  adminToken,
+  onExtracted,
+}: {
+  adminToken: string;
+  onExtracted: (str: string, targetSlot: "regular" | "premium" | "blueprint") => void;
+}) {
+  const { toast } = useToast();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [format, setFormat] = useState<"compressed" | "json">("compressed");
+  const [targetSlot, setTargetSlot] = useState<"regular" | "premium" | "blueprint">("premium");
+  const [extractedData, setExtractedData] = useState<{
+    carsCount: number;
+    rawStr: string;
+    stats?: any;
+  } | null>(null);
+
+  const extractMutation = useExtractAccount({
+    mutation: {
+      onSuccess: (data: any) => {
+        playSuccess();
+        const rawStr = data.extractedString || JSON.stringify(data.rawProfile || {});
+        setExtractedData({
+          carsCount: data.totalCars || 0,
+          rawStr,
+          stats: data.stats,
+        });
+        toast({
+          title: "🎉 Account Profile Extracted!",
+          description: `Found ${data.totalCars || 0} cars in account garage.`,
+        });
+      },
+      onError: (err: any) => {
+        playError();
+        const msg =
+          err?.response?.data?.message || err?.message || "Failed to extract account profile";
+        toast({
+          title: "Extraction Error",
+          description: msg,
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  const handleExtract = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      toast({ title: "Validation Error", description: "Email and password are required", variant: "destructive" });
+      return;
+    }
+    playClick();
+    extractMutation.mutate({
+      data: {
+        email: email.trim(),
+        password: password.trim(),
+        format,
+        target: targetSlot === "blueprint" ? "full" : "cars",
+        adminToken,
+      },
+    });
+  };
+
+  const handleApplyToSlot = () => {
+    if (!extractedData?.rawStr) return;
+    playSuccess();
+    onExtracted(extractedData.rawStr, targetSlot);
+  };
+
+  return (
+    <div className="mt-4 space-y-4">
+      <form onSubmit={handleExtract} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
+        <div>
+          <label className="block text-[11px] font-mono font-bold text-zinc-400 mb-1">
+            CarX Account Email
+          </label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="driver@example.com"
+            className="w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50"
+          />
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-mono font-bold text-zinc-400 mb-1">
+            Account Password
+          </label>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            className="w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50"
+          />
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-mono font-bold text-zinc-400 mb-1">
+            Target Config Slot
+          </label>
+          <select
+            value={targetSlot}
+            onChange={(e) => setTargetSlot(e.target.value as any)}
+            className="w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500/50"
+          >
+            <option value="premium">👑 Premium Cars String</option>
+            <option value="regular">🚗 Regular Cars String</option>
+            <option value="blueprint">📄 Blueprint String</option>
+          </select>
+        </div>
+
+        <button
+          type="submit"
+          disabled={extractMutation.isPending}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-black font-black rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-50 shadow-[0_0_15px_rgba(245,158,11,0.25)] h-[38px]"
+        >
+          {extractMutation.isPending ? (
+            <>
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <span>Extracting...</span>
+            </>
+          ) : (
+            <>
+              <Download className="w-3.5 h-3.5" />
+              <span>Extract Strings</span>
+            </>
+          )}
+        </button>
+      </form>
+
+      {/* Extracted preview banner */}
+      {extractedData && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm">
+              ✓
+            </div>
+            <div>
+              <p className="text-xs font-bold text-emerald-300">
+                Successfully extracted {extractedData.carsCount} Cars ({formatBytes(extractedData.rawStr.length)})
+              </p>
+              <p className="text-[11px] text-zinc-400">
+                Level {extractedData.stats?.level || 1} • Cash: {Number(extractedData.stats?.cash || 0).toLocaleString()} • Ready to populate
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <CopyButton text={extractedData.rawStr} label="Copy Raw" />
+            <button
+              type="button"
+              onClick={handleApplyToSlot}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-lg text-xs transition-all shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Apply to {targetSlot.toUpperCase()} Card</span>
+            </button>
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
 function StringsTab({ adminToken }: { adminToken: string }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -612,6 +786,48 @@ function StringsTab({ adminToken }: { adminToken: string }) {
             Save All Strings
           </button>
         </div>
+      </div>
+
+      {/* ⚡ Auto-Extract String from CarX Account Card */}
+      <div className="bg-gradient-to-br from-zinc-900/90 via-zinc-900/70 to-zinc-950/90 border border-amber-500/30 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 blur-3xl pointer-events-none rounded-full" />
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500/20 to-yellow-400/20 border border-amber-500/30 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+              🔑
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">Account String Extractor</h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5" /> 1-Click Auto Save
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Login with any CarX account to instantly extract its live garage profile, cars, and blueprints without manual copying.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <AccountExtractorForm
+          adminToken={adminToken}
+          onExtracted={(extractedStr, targetSlot) => {
+            if (targetSlot === "regular") {
+              setRegularValue(extractedStr);
+              setRegularDirty(true);
+              toast({ title: "🚗 Applied to Regular Cars", description: "Click Save All or Save below to store to database." });
+            } else if (targetSlot === "premium") {
+              setPremiumValue(extractedStr);
+              setPremiumDirty(true);
+              toast({ title: "👑 Applied to Premium Cars", description: "Click Save All or Save below to store to database." });
+            } else if (targetSlot === "blueprint") {
+              setBpValue(extractedStr);
+              setBpDirty(true);
+              toast({ title: "📄 Applied to Blueprint", description: "Click Save All or Save below to store to database." });
+            }
+          }}
+        />
       </div>
 
       {stringsQuery.isLoading && (
