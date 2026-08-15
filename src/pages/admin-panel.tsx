@@ -21,6 +21,8 @@ import {
   Upload, RefreshCw, Clock, Infinity, Calendar, ChevronDown, ChevronUp, Search, Zap
 } from "lucide-react";
 
+import { playClick, playSuccess, playError } from "@/lib/sound";
+
 const TABS = [
   { id: "keys", label: "Keys", icon: Key },
   { id: "injector", label: "Account Injector & Batch", icon: Zap },
@@ -31,6 +33,7 @@ const TABS = [
 function CopyButton({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
+    playClick();
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -38,7 +41,7 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-all text-xs"
+      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-all text-xs font-mono cursor-pointer"
     >
       {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
       {label || (copied ? "Copied!" : "Copy")}
@@ -81,11 +84,13 @@ function KeysTab({ adminToken }: { adminToken: string }) {
   const generateKey = useGenerateKey({
     mutation: {
       onSuccess: (data: any) => {
+        playSuccess();
         toast({ title: "✅ Key Generated", description: data.key });
         qc.invalidateQueries({ queryKey: getListKeysQueryKey() });
         setCustomKey("");
       },
       onError: (err: any) => {
+        playError();
         const msg = err?.response?.data?.message || err?.response?.data?.error || "Failed to generate key";
         toast({ title: "Error", description: msg, variant: "destructive" });
       },
@@ -94,17 +99,24 @@ function KeysTab({ adminToken }: { adminToken: string }) {
   const revokeKey = useRevokeKey({
     mutation: {
       onSuccess: () => {
+        playSuccess();
         toast({ title: "Key Revoked" });
         qc.invalidateQueries({ queryKey: getListKeysQueryKey() });
       },
-      onError: () => toast({ title: "Error", description: "Failed to revoke key", variant: "destructive" }),
+      onError: () => {
+        playError();
+        toast({ title: "Error", description: "Failed to revoke key", variant: "destructive" });
+      },
     },
   });
 
   const keys = keysQuery.data || [];
   const filtered = keys.filter((k: any) => !search || k.key.includes(search.toUpperCase()));
+  const activeKeysCount = keys.filter((k: any) => !k.used).length;
+  const usedKeysCount = keys.filter((k: any) => k.used).length;
 
   const handleGenerate = () => {
+    playClick();
     const dur = DURATION_OPTIONS[durationIdx];
     generateKey.mutate({
       data: {
@@ -120,6 +132,7 @@ function KeysTab({ adminToken }: { adminToken: string }) {
   };
 
   const toggleFeature = (id: string) => {
+    playClick();
     setSelectedFeatures(prev =>
       prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
     );
@@ -127,6 +140,25 @@ function KeysTab({ adminToken }: { adminToken: string }) {
 
   return (
     <div className="space-y-6">
+      {/* Top Metrics Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-2xl p-3.5 backdrop-blur-xl">
+          <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Total Keys</div>
+          <div className="text-xl font-bold font-mono text-white mt-0.5">{keys.length}</div>
+        </div>
+        <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-2xl p-3.5 backdrop-blur-xl">
+          <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Available</div>
+          <div className="text-xl font-bold font-mono text-emerald-400 mt-0.5">{activeKeysCount}</div>
+        </div>
+        <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-2xl p-3.5 backdrop-blur-xl">
+          <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Used / Expired</div>
+          <div className="text-xl font-bold font-mono text-zinc-400 mt-0.5">{usedKeysCount}</div>
+        </div>
+        <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-2xl p-3.5 backdrop-blur-xl">
+          <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Fleet Status</div>
+          <div className="text-xl font-bold font-mono text-amber-400 mt-0.5">Active ⚡</div>
+        </div>
+      </div>
       {/* Generate Key Form */}
       <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4 space-y-4">
         <div className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Generate New Key</div>

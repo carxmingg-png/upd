@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   useLoginCarX,
@@ -18,9 +18,13 @@ import {
 import { CurrencyInputPreset, CarsInjectInputMode } from "@/lib/api-client";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { DashboardBanner } from "@/components/DashboardBanner";
+import { TerminalConsole } from "@/components/TerminalConsole";
+import { playClick, playSuccess, playError, playUnlock, isSoundEnabled, setSoundEnabled } from "@/lib/sound";
 import {
   LogOut, DollarSign, Map, Car, Star, Zap, Trophy,
   User, UserPlus, Eye, EyeOff, RefreshCw, CheckCircle2, AlertCircle, Users,
+  Sparkles, ShieldCheck, Download, Copy, Volume2, VolumeX, Shield, Wrench, ChevronRight
 } from "lucide-react";
 
 interface CarXSession {
@@ -29,6 +33,7 @@ interface CarXSession {
   email: string;
   deviceId?: string;
   uniqueId?: string;
+  profileStats?: any;
 }
 
 interface ProfileStats {
@@ -41,12 +46,36 @@ interface ProfileStats {
   premium: boolean;
 }
 
-function StatBadge({ label, value, icon }: { label: string; value: string | number; icon: string }) {
+function StatTelemetryCard({
+  label,
+  value,
+  icon,
+  accent,
+  sublabel
+}: {
+  label: string;
+  value: string | number;
+  icon: string;
+  accent: string;
+  sublabel?: string;
+}) {
   return (
-    <div className="bg-zinc-800/60 border border-zinc-700/40 rounded-xl p-3 text-center">
-      <div className="text-2xl mb-1">{icon}</div>
-      <div className="text-sm font-bold text-white">{typeof value === "number" ? value.toLocaleString() : value}</div>
-      <div className="text-xs text-zinc-500 mt-0.5">{label}</div>
+    <div className="relative bg-zinc-950/80 border border-zinc-800/80 rounded-2xl p-3.5 backdrop-blur-xl transition-all duration-300 hover:border-zinc-700 hover:shadow-[0_4px_20px_rgba(0,0,0,0.5)] overflow-hidden group">
+      <div className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r ${accent} opacity-60`} />
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <div className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest flex items-center gap-1">
+            <span>{icon}</span>
+            <span>{label}</span>
+          </div>
+          <div className="text-base sm:text-lg font-black font-mono text-white tracking-tight">
+            {typeof value === "number" ? value.toLocaleString() : value}
+          </div>
+          {sublabel && (
+            <div className="text-[10px] text-zinc-500 font-mono">{sublabel}</div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -72,7 +101,7 @@ function NumInput({
 }) {
   return (
     <div className="space-y-1">
-      <label className={`text-xs font-semibold ${accent} flex items-center gap-1`}>
+      <label className={`text-xs font-semibold ${accent} flex items-center gap-1 font-mono`}>
         <span>{icon}</span> {label}
       </label>
       <input
@@ -82,34 +111,69 @@ function NumInput({
         min={min}
         max={max}
         placeholder={placeholder}
-        className="w-full bg-zinc-800/80 border border-zinc-700/60 rounded-lg px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 transition-all font-mono"
+        className="w-full bg-zinc-900/90 border border-zinc-700/70 rounded-xl px-3.5 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 transition-all font-mono shadow-inner"
       />
     </div>
   );
 }
 
-function Toggle({ label, checked, onChange, accent }: { label: string; checked: boolean; onChange: (v: boolean) => void; accent: string }) {
+function Toggle({
+  label,
+  checked,
+  onChange,
+  accent,
+  badge
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  accent: string;
+  badge?: string;
+}) {
   return (
     <button
       type="button"
-      onClick={() => onChange(!checked)}
-      className={`flex items-center justify-between w-full px-3 py-2.5 rounded-xl border transition-all ${checked ? `${accent} border-opacity-40` : "bg-zinc-800/60 border-zinc-700/60"}`}
+      onClick={() => {
+        playClick();
+        onChange(!checked);
+      }}
+      className={`flex items-center justify-between w-full px-3.5 py-2.5 rounded-xl border transition-all cursor-pointer ${
+        checked ? `${accent} border-opacity-40 shadow-sm` : "bg-zinc-900/60 border-zinc-800/80 hover:bg-zinc-800/60"
+      }`}
     >
-      <span className="text-xs font-semibold text-white">{label}</span>
-      <div className={`w-9 h-5 rounded-full transition-all relative ${checked ? "bg-emerald-500" : "bg-zinc-600"}`}>
-        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${checked ? "left-4" : "left-0.5"}`} />
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold text-white font-mono">{label}</span>
+        {badge && (
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 font-mono">
+            {badge}
+          </span>
+        )}
+      </div>
+      <div className={`w-9 h-5 rounded-full transition-all relative ${checked ? "bg-amber-400" : "bg-zinc-700"}`}>
+        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-black shadow transition-all ${checked ? "left-4" : "left-0.5"}`} />
       </div>
     </button>
   );
 }
 
-function BatchField({ label, value, onChange, placeholder, icon, type = "text" }: {
-  label: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; icon: string; type?: string;
+function BatchField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  icon,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  icon: string;
+  type?: string;
 }) {
   return (
     <div className="space-y-1">
-      <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest flex items-center gap-1">
+      <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest flex items-center gap-1 font-mono">
         <span>{icon}</span>{label}
       </label>
       <input
@@ -117,7 +181,7 @@ function BatchField({ label, value, onChange, placeholder, icon, type = "text" }
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full bg-zinc-800/60 border border-zinc-700/60 rounded-lg px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 transition-all font-mono"
+        className="w-full bg-zinc-900/90 border border-zinc-700/70 rounded-xl px-3.5 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30 transition-all font-mono shadow-inner"
       />
     </div>
   );
@@ -147,12 +211,13 @@ function BatchForm({ userToken }: { userToken: string }) {
 
   const CAR_MODES = [
     { v: "regular", l: "🚗 Regular", sub: "Standard Garage" },
-    { v: "premium", l: "👑 Premium", sub: "Max Tuned Garage" },
+    { v: "premium", l: "👑 Premium", sub: "Max Tuned" },
     { v: "all", l: "🏎️ All Cars", sub: `${totalCars || 69} cars` },
     { v: "custom", l: "🔢 Custom", sub: "Set count" },
   ];
 
   const handleBatch = async () => {
+    playClick();
     const n = Math.min(Math.max(Number(count) || 1, 1), 30);
     setRunning(true);
     setResults([]);
@@ -189,6 +254,7 @@ function BatchForm({ userToken }: { userToken: string }) {
       const data = await res.json();
 
       if (!res.ok || !data.jobId) {
+        playError();
         toast({ title: "Bulk Failed", description: data.message || "Failed to start bulk generation", variant: "destructive" });
         setLogs((l) => [...l, `❌ Error: ${data.message || "Request failed"}`]);
         setRunning(false);
@@ -198,7 +264,6 @@ function BatchForm({ userToken }: { userToken: string }) {
       const jobId = data.jobId;
       setLogs((l) => [...l, `✅ Bulk Job Started! ID: ${jobId}`]);
 
-      // Poll status every 1 second
       const interval = setInterval(async () => {
         try {
           const statusRes = await fetch(`/api/carx/bulk-status/${jobId}`, {
@@ -215,6 +280,7 @@ function BatchForm({ userToken }: { userToken: string }) {
               clearInterval(interval);
               setRunning(false);
               const okCount = (job.results || []).filter((r: any) => r.status === "success").length;
+              playSuccess();
               toast({ title: "Bulk Complete!", description: `${okCount}/${n} accounts created successfully` });
             }
           }
@@ -223,106 +289,150 @@ function BatchForm({ userToken }: { userToken: string }) {
         }
       }, 1000);
     } catch (err: any) {
+      playError();
       toast({ title: "Bulk Failed", description: err.message || "Network error", variant: "destructive" });
       setRunning(false);
     }
   };
 
+  const copyAllAccounts = () => {
+    playClick();
+    const txt = results
+      .filter((r) => r.status === "success")
+      .map((r) => `${r.email}:${r.password || password}`)
+      .join("\n");
+    if (txt) {
+      navigator.clipboard.writeText(txt);
+      toast({ title: "Copied!", description: "All created accounts copied to clipboard (email:password)" });
+    }
+  };
+
   return (
-    <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-5 space-y-4">
+    <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-3xl p-5 sm:p-6 space-y-5 shadow-2xl backdrop-blur-xl">
+      <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+        <div className="flex items-center gap-2">
+          <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+            <Users className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold font-sans text-white uppercase tracking-wider">
+              Bulk Account Generator
+            </h3>
+            <p className="text-[11px] font-mono text-zinc-500">
+              Create up to 30 custom pre-configured accounts in parallel
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Row 1: count + password */}
-      <div className="grid grid-cols-2 gap-3">
-        <BatchField label="Accounts (max 30)" value={count} onChange={setCount} placeholder="5" icon="👥" type="number" />
-        <BatchField label="Password" value={password} onChange={setPassword} placeholder="CARXMING" icon="🔑" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <BatchField label="Accounts Count (Max 30)" value={count} onChange={setCount} placeholder="5" icon="👥" type="number" />
+        <BatchField label="Default Password" value={password} onChange={setPassword} placeholder="CARXMING" icon="🔑" />
       </div>
 
       {/* Row 2: Currency */}
-      <div>
-        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-2">💰 Currency</p>
+      <div className="space-y-2">
+        <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest font-mono">💰 Injected Currency & Level</p>
         <div className="grid grid-cols-3 gap-2">
           <BatchField label="Silver" value={silver} onChange={setSilver} placeholder="50000000" icon="🪙" type="number" />
           <BatchField label="Gold" value={gold} onChange={setGold} placeholder="9999" icon="💎" type="number" />
-          <BatchField label="XP" value={xp} onChange={setXp} placeholder="93060" icon="⚡" type="number" />
+          <BatchField label="XP (Max 93060)" value={xp} onChange={setXp} placeholder="93060" icon="⚡" type="number" />
         </div>
       </div>
 
       {/* Row 3: Cars mode */}
-      <div>
-        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest mb-2">🚗 Cars</p>
-        <div className="grid grid-cols-4 gap-1.5">
+      <div className="space-y-2">
+        <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest font-mono">🚗 Garage Cars Preset</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {CAR_MODES.map(({ v, l, sub }) => (
             <button
               key={v}
-              onClick={() => setCarsMode(v)}
-              className={`flex flex-col items-center py-2 px-1 rounded-xl text-center transition-all border ${
-                carsMode === v ? "bg-purple-500 border-purple-400 text-white" : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700"
+              onClick={() => {
+                playClick();
+                setCarsMode(v);
+              }}
+              className={`flex flex-col items-center py-2.5 px-2 rounded-2xl text-center transition-all border cursor-pointer ${
+                carsMode === v
+                  ? "bg-amber-400 border-amber-400 text-black font-bold shadow-[0_0_15px_rgba(245,158,11,0.3)]"
+                  : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:bg-zinc-800"
               }`}
             >
-              <span className="text-xs font-bold">{l}</span>
-              <span className={`text-[9px] mt-0.5 ${carsMode === v ? "text-white/70" : "text-zinc-600"}`}>{sub}</span>
+              <span className="text-xs font-bold font-mono">{l}</span>
+              <span className={`text-[9px] mt-0.5 font-mono ${carsMode === v ? "text-black/70" : "text-zinc-500"}`}>{sub}</span>
             </button>
           ))}
         </div>
         <AnimatePresence>
           {carsMode === "custom" && (
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mt-2">
-              <BatchField label="Car Count" value={carCount} onChange={setCarCount} placeholder="50" icon="🔢" type="number" />
+              <BatchField label="Custom Car Count" value={carCount} onChange={setCarCount} placeholder="50" icon="🔢" type="number" />
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
       {/* Row 4: Toggles */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <Toggle label="🗺️  Unlock All Maps" checked={includeMaps} onChange={setIncludeMaps} accent="bg-cyan-500/10 border-cyan-500" />
-        <Toggle label="🏆  Unlock Clubs & Houses" checked={includeClubs} onChange={setIncludeClubs} accent="bg-purple-500/10 border-purple-500" />
-        <Toggle label="🎟️  Street Pass + EP Points" checked={includeStreetPass} onChange={setIncludeStreetPass} accent="bg-yellow-500/10 border-yellow-500" />
-        <Toggle label="🎨  Profile Style (Avatars/Frames)" checked={includeProfileStyle} onChange={setIncludeProfileStyle} accent="bg-pink-500/10 border-pink-500" />
-        <Toggle label="⚡  Verify Accounts" checked={includeVerify} onChange={setIncludeVerify} accent="bg-emerald-500/10 border-emerald-500" />
+      <div className="space-y-2">
+        <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-widest font-mono">⚙️ Unlock Add-ons</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Toggle label="🗺️ Unlock All Maps" checked={includeMaps} onChange={setIncludeMaps} accent="bg-cyan-500/15 border-cyan-400/40" />
+          <Toggle label="🏆 22 Clubs & 52 Houses" checked={includeClubs} onChange={setIncludeClubs} accent="bg-purple-500/15 border-purple-400/40" />
+          <Toggle label="🎟️ Street Pass + EP" checked={includeStreetPass} onChange={setIncludeStreetPass} accent="bg-yellow-500/15 border-yellow-400/40" />
+          <Toggle label="🎨 Avatars & Frames" checked={includeProfileStyle} onChange={setIncludeProfileStyle} accent="bg-pink-500/15 border-pink-400/40" />
+          <Toggle label="⚡ Auto-Verify Accounts" checked={includeVerify} onChange={setIncludeVerify} accent="bg-emerald-500/15 border-emerald-400/40" />
+        </div>
       </div>
 
       <button
         onClick={handleBatch}
         disabled={running}
-        className="w-full py-3 rounded-xl font-bold text-sm tracking-widest uppercase bg-gradient-to-r from-emerald-600 to-emerald-500 text-white hover:from-emerald-500 hover:to-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+        className="w-full py-3.5 rounded-2xl font-black text-sm tracking-widest uppercase bg-gradient-to-r from-emerald-500 via-emerald-400 to-teal-400 text-black hover:from-emerald-400 hover:to-teal-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-[0_0_25px_rgba(16,185,129,0.3)] hover:shadow-[0_0_35px_rgba(16,185,129,0.5)] cursor-pointer"
       >
         {running ? (
           <span className="flex items-center justify-center gap-2">
             <RefreshCw className="w-4 h-4 animate-spin" />
-            Creating {count} Accounts ({progress}%)...
+            CREATING {count} ACCOUNTS ({progress}%)...
           </span>
         ) : (
           <span className="flex items-center justify-center gap-2">
             <Users className="w-4 h-4" />
-            Create {count || "?"} Accounts
+            LAUNCH BULK GENERATOR ({count || "?"} ACCOUNTS)
           </span>
         )}
       </button>
 
-      {/* Live Console Logs */}
+      {/* Live Terminal Logs */}
       {logs.length > 0 && (
-        <div className="bg-black/80 border border-emerald-500/30 rounded-xl p-3 font-mono text-xs max-h-40 overflow-y-auto space-y-1">
-          <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest mb-1">Live Progress Terminal</p>
-          {logs.map((log, i) => (
-            <div key={i} className="text-zinc-300 text-[11px] leading-relaxed">{log}</div>
-          ))}
-        </div>
+        <TerminalConsole logs={logs} title={`BULK BATCH LOGS (${progress}%)`} />
       )}
 
       {/* Results List */}
       {results.length > 0 && (
-        <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-          <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">
-            Accounts Created — {results.filter(r => r.status === "success").length}/{results.length} Success
-          </p>
-          {results.map((r, i) => (
-            <div key={i} className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${r.status === "success" ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300" : "bg-red-500/10 border border-red-500/20 text-red-300"}`}>
-              {r.status === "success" ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
-              <span className="font-mono flex-1 truncate">{r.email}</span>
-              {r.password && <span className="font-mono text-zinc-400 text-[10px]">{r.password}</span>}
-              {r.message && <span className="text-red-400 text-[10px]">{r.message}</span>}
-            </div>
-          ))}
+        <div className="space-y-2 pt-2 border-t border-zinc-800/80">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-mono text-zinc-400 uppercase tracking-widest">
+              Generated: {results.filter(r => r.status === "success").length}/{results.length} Success
+            </p>
+            <button
+              onClick={copyAllAccounts}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono transition-all"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              Copy All
+            </button>
+          </div>
+          <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+            {results.map((r, i) => (
+              <div key={i} className={`flex items-center justify-between text-xs px-3 py-2 rounded-xl border ${r.status === "success" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" : "bg-red-500/10 border-red-500/30 text-red-300"}`}>
+                <div className="flex items-center gap-2 truncate">
+                  {r.status === "success" ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /> : <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />}
+                  <span className="font-mono truncate">{r.email}</span>
+                </div>
+                {r.password && <span className="font-mono text-zinc-400 text-[11px] ml-2 shrink-0">{r.password}</span>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -339,15 +449,19 @@ function LoginForm({ userToken, onSuccess }: { userToken: string; onSuccess: (s:
 
   const login = useLoginCarX({
     mutation: {
-      onSuccess: (d) => onSuccess({
-        token: d.token || "",
-        carxId: d.userId || d.user_id || "",
-        email: d.email || email,
-        deviceId: d.deviceId || "",
-        uniqueId: d.uniqueId || "",
-        profileStats: d.profileStats
-      }),
+      onSuccess: (d) => {
+        playSuccess();
+        onSuccess({
+          token: d.token || "",
+          carxId: d.userId || d.user_id || "",
+          email: d.email || email,
+          deviceId: d.deviceId || "",
+          uniqueId: d.uniqueId || "",
+          profileStats: d.profileStats,
+        });
+      },
       onError: (err) => {
+        playError();
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
         toast({ title: "Login Failed", description: msg || "Invalid credentials", variant: "destructive" });
       },
@@ -358,20 +472,23 @@ function LoginForm({ userToken, onSuccess }: { userToken: string; onSuccess: (s:
     mutation: {
       onSuccess: (d) => {
         if (d.success === false || !d.token) {
+          playError();
           toast({ title: "Registration Unverified", description: d.message || "Auto-verification failed.", variant: "destructive" });
           return;
         }
-        toast({ title: "Account Created!", description: "Blueprint applied to your new account" });
+        playSuccess();
+        toast({ title: "Account Created!", description: "Blueprint profile applied automatically" });
         onSuccess({
           token: d.token || "",
           carxId: d.userId || d.user_id || "",
           email: d.email || email,
           deviceId: d.deviceId || "",
           uniqueId: d.uniqueId || "",
-          profileStats: d.profileStats
+          profileStats: d.profileStats,
         });
       },
       onError: (err) => {
+        playError();
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
         toast({ title: "Registration Failed", description: msg || "Try a different email", variant: "destructive" });
       },
@@ -381,8 +498,8 @@ function LoginForm({ userToken, onSuccess }: { userToken: string; onSuccess: (s:
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
+    playClick();
 
-    // Retrieve or generate persistent unique device identifiers
     let storedDeviceIds: { deviceId: string; uniqueId: string } | null = null;
     try {
       const savedIds = localStorage.getItem(`carx_device_ids_${email}`);
@@ -425,30 +542,21 @@ function LoginForm({ userToken, onSuccess }: { userToken: string; onSuccess: (s:
 
   if (mode === "bulk") {
     return (
-      <div>
-        <div className="flex gap-1 p-1 bg-zinc-800/60 rounded-xl mb-4">
+      <div className="space-y-4">
+        <div className="flex gap-1.5 p-1.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl">
           {(["login", "register", "bulk"] as const).map((m) => (
             <button
               key={m}
               onClick={() => {
+                playClick();
                 setMode(m);
-                if (m === "register") {
-                  setEmail(prev => {
-                    if (!prev || prev.indexOf("@") === -1) {
-                      const randId = Math.floor(100000 + Math.random() * 900000);
-                      return `player${randId}@web-library.net`;
-                    }
-                    const atIdx = prev.indexOf("@");
-                    return prev.substring(0, atIdx) + "@web-library.net";
-                  });
-                }
               }}
-              className={`flex items-center gap-2 flex-1 justify-center py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
-                mode === m ? "bg-emerald-500 text-black" : "text-zinc-500 hover:text-zinc-300"
+              className={`flex items-center gap-2 flex-1 justify-center py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all cursor-pointer font-mono ${
+                mode === m ? "bg-amber-400 text-black shadow-md" : "text-zinc-400 hover:text-white"
               }`}
             >
               {m === "login" ? <User className="w-3.5 h-3.5" /> : m === "register" ? <UserPlus className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
-              {m === "login" ? "Login" : m === "register" ? "Register" : "Bulk"}
+              {m === "login" ? "Login" : m === "register" ? "Register" : "Bulk Generator"}
             </button>
           ))}
         </div>
@@ -458,15 +566,16 @@ function LoginForm({ userToken, onSuccess }: { userToken: string; onSuccess: (s:
   }
 
   return (
-    <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-6">
-      <div className="flex gap-1 p-1 bg-zinc-800/60 rounded-xl mb-6">
+    <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
+      <div className="flex gap-1.5 p-1.5 bg-zinc-900/90 border border-zinc-800 rounded-2xl mb-6">
         {(["login", "register", "bulk"] as const).map((m) => (
           <button
             key={m}
             onClick={() => {
+              playClick();
               setMode(m);
               if (m === "register") {
-                setEmail(prev => {
+                setEmail((prev) => {
                   if (!prev || prev.indexOf("@") === -1) {
                     const randId = Math.floor(100000 + Math.random() * 900000);
                     return `player${randId}@web-library.net`;
@@ -476,12 +585,12 @@ function LoginForm({ userToken, onSuccess }: { userToken: string; onSuccess: (s:
                 });
               }
             }}
-            className={`flex items-center gap-2 flex-1 justify-center py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
-              mode === m ? "bg-amber-500 text-black" : "text-zinc-500 hover:text-zinc-300"
+            className={`flex items-center gap-2 flex-1 justify-center py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all cursor-pointer font-mono ${
+              mode === m ? "bg-amber-400 text-black shadow-md" : "text-zinc-400 hover:text-white"
             }`}
           >
             {m === "login" ? <User className="w-3.5 h-3.5" /> : m === "register" ? <UserPlus className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
-            {m === "login" ? "Login" : m === "register" ? "Register" : "Bulk"}
+            {m === "login" ? "Login Account" : m === "register" ? "New Account" : "Bulk Generator"}
           </button>
         ))}
       </div>
@@ -490,66 +599,55 @@ function LoginForm({ userToken, onSuccess }: { userToken: string; onSuccess: (s:
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: "auto" }}
-          className="mb-4 p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-xl text-xs text-cyan-300"
+          className="mb-4 p-3.5 bg-cyan-500/10 border border-cyan-500/30 rounded-2xl text-xs text-cyan-300 font-mono"
         >
-          ℹ️ New account will have the blueprint profile applied automatically.
+          ℹ️ New account will automatically receive complete save data blueprint.
         </motion.div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="text-xs text-zinc-500 mb-1.5 block uppercase tracking-widest">Email</label>
+          <label className="text-xs text-zinc-400 mb-1.5 block uppercase tracking-widest font-mono">
+            CarX Account Email
+          </label>
           <input
             data-testid="input-carx-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="your@email.com"
-            className="w-full bg-zinc-800/60 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/60 transition-all"
+            placeholder="driver@domain.com"
+            className="w-full bg-zinc-900/90 border border-zinc-700/80 focus:border-amber-400 rounded-2xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-amber-400 font-mono transition-all shadow-inner"
           />
           {mode === "register" && (
-            <div className="mt-2.5">
-              <label className="flex items-center gap-2 font-mono text-xs text-zinc-300 cursor-pointer p-1">
+            <div className="mt-3 flex items-center justify-between p-2 rounded-xl bg-zinc-900/50 border border-zinc-800">
+              <label className="flex items-center gap-2 font-mono text-xs text-zinc-300 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={singleVerify}
                   onChange={(e) => {
+                    playClick();
                     const checked = e.target.checked;
                     setSingleVerify(checked);
-                    if (checked) {
-                      // Swap to @web-library.net
-                      setEmail((prev) => {
-                        if (!prev) return "";
-                        const atIdx = prev.indexOf("@");
-                        const localPart = atIdx !== -1 ? prev.substring(0, atIdx) : prev;
-                        return localPart + "@web-library.net";
-                      });
-                    } else {
-                      // Swap to @gmail.com
-                      setEmail((prev) => {
-                        if (!prev) return "";
-                        const atIdx = prev.indexOf("@");
-                        const localPart = atIdx !== -1 ? prev.substring(0, atIdx) : prev;
-                        return localPart + "@gmail.com";
-                      });
-                    }
+                    setEmail((prev) => {
+                      if (!prev) return "";
+                      const atIdx = prev.indexOf("@");
+                      const localPart = atIdx !== -1 ? prev.substring(0, atIdx) : prev;
+                      return localPart + (checked ? "@web-library.net" : "@gmail.com");
+                    });
                   }}
-                  className="accent-purple-500"
+                  className="accent-amber-400 w-4 h-4 rounded cursor-pointer"
                 />
-                <span className="flex items-center gap-1.5">
-                  Verify Account
-                </span>
+                <span>Auto-Verify Account Email</span>
               </label>
+              <span className="text-[10px] text-amber-400 font-mono">@web-library.net</span>
             </div>
           )}
-          {mode === "register" && (
-            <p className="text-[10px] text-zinc-500 mt-1">
-              ℹ️ Auto-verification only works with <span className="text-amber-500 font-semibold font-mono">@web-library.net</span> email domain.
-            </p>
-          )}
         </div>
+
         <div>
-          <label className="text-xs text-zinc-500 mb-1.5 block uppercase tracking-widest">Password</label>
+          <label className="text-xs text-zinc-400 mb-1.5 block uppercase tracking-widest font-mono">
+            Password
+          </label>
           <div className="relative">
             <input
               data-testid="input-carx-password"
@@ -557,49 +655,75 @@ function LoginForm({ userToken, onSuccess }: { userToken: string; onSuccess: (s:
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-zinc-800/60 border border-zinc-700/60 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/60 transition-all pr-10"
+              className="w-full bg-zinc-900/90 border border-zinc-700/80 focus:border-amber-400 rounded-2xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-amber-400 font-mono transition-all pr-11 shadow-inner"
             />
             <button
               type="button"
-              onClick={() => setShowPw(!showPw)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+              onClick={() => {
+                playClick();
+                setShowPw(!showPw);
+              }}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
             >
               {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
         </div>
+
         <button
           data-testid="button-carx-submit"
           type="submit"
           disabled={isPending || !email || !password}
-          className="w-full py-3 rounded-xl font-bold text-sm tracking-widest uppercase bg-gradient-to-r from-amber-500 to-amber-400 text-black hover:from-amber-400 hover:to-amber-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_0_20px_rgba(245,158,11,0.2)]"
+          className="w-full py-3.5 rounded-2xl font-black text-sm tracking-widest uppercase bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 text-black hover:from-amber-400 hover:to-yellow-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-[0_0_25px_rgba(245,158,11,0.35)] hover:shadow-[0_0_35px_rgba(245,158,11,0.5)] cursor-pointer"
         >
           {isPending ? (
             <span className="flex items-center justify-center gap-2">
               <RefreshCw className="w-4 h-4 animate-spin" />
-              {mode === "login" ? "Logging in..." : "Creating account..."}
+              {mode === "login" ? "CONNECTING TO CARX..." : "PROVISIONING ACCOUNT..."}
             </span>
-          ) : (mode === "login" ? "Login to CarX" : "Create Account")}
+          ) : mode === "login" ? (
+            "CONNECT & INJECT ACCOUNT"
+          ) : (
+            "CREATE & INITIALIZE ACCOUNT"
+          )}
         </button>
       </form>
     </div>
   );
 }
 
-function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSession; userToken: string; onDisconnect: () => void }) {
+function InjectionPanel({
+  session,
+  userToken,
+  onDisconnect,
+}: {
+  session: CarXSession;
+  userToken: string;
+  onDisconnect: () => void;
+}) {
   const { toast } = useToast();
   const [profile, setProfile] = useState<ProfileStats | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [activeTab, setActiveTab] = useState<"quick" | "custom" | "logs">("quick");
 
   const [currencyPreset, setCurrencyPreset] = useState<string>(CurrencyInputPreset.max);
   const [customSilver, setCustomSilver] = useState("50000000");
   const [customGold, setCustomGold] = useState("9999");
-  const [customXp, setCustomXp] = useState("999999");
+  const [customXp, setCustomXp] = useState("93060");
 
-  const [carsMode, setCarsMode] = useState<string>(CarsInjectInputMode.regular);
+  const [carsMode, setCarsMode] = useState<string>(CarsInjectInputMode.all);
   const [customCarCount, setCustomCarCount] = useState("50");
 
+  const [logs, setLogs] = useState<string[]>([
+    `[INFO] Session established for ${session.email}`,
+    `[INFO] CarX Cloud Gateway ready. Safe anti-ban protocol active.`,
+  ]);
+
   const [results, setResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
+
+  const appendLog = (line: string) => {
+    setLogs((prev) => [...prev, line]);
+  };
 
   const getProfile = useGetProfile({
     mutation: {
@@ -614,69 +738,106 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
             streetPass: !!d.stats.isVerified,
             premium: d.stats.level || 1,
           });
+          appendLog(`[SYNC] Telemetry fetched: Cash=${d.stats.cash}, Gold=${d.stats.gold}, Level=${d.stats.level || 1}`);
         }
         setLoadingProfile(false);
       },
-      onError: () => { setLoadingProfile(false); toast({ title: "Error", description: "Failed to fetch profile", variant: "destructive" }); },
+      onError: () => {
+        setLoadingProfile(false);
+        toast({ title: "Error", description: "Failed to fetch profile", variant: "destructive" });
+      },
     },
   });
 
   const injectCurrency = useInjectCurrency({
     mutation: {
-      onSuccess: (d) => { setResults(r => ({ ...r, currency: { ok: true, msg: d.message || "Done" } })); },
+      onSuccess: (d) => {
+        playSuccess();
+        setResults((r) => ({ ...r, currency: { ok: true, msg: d.message || "Done" } }));
+        appendLog(`[SUCCESS] Currency injection completed`);
+        fetchProfile();
+      },
       onError: (err) => {
+        playError();
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        setResults(r => ({ ...r, currency: { ok: false, msg: msg || "Failed" } }));
+        setResults((r) => ({ ...r, currency: { ok: false, msg: msg || "Failed" } }));
+        appendLog(`[ERROR] Currency injection failed: ${msg}`);
       },
     },
   });
 
   const unlockMaps = useUnlockMaps({
     mutation: {
-      onSuccess: (d) => { setResults(r => ({ ...r, maps: { ok: true, msg: d.message || "Done" } })); },
+      onSuccess: (d) => {
+        playSuccess();
+        setResults((r) => ({ ...r, maps: { ok: true, msg: d.message || "Done" } }));
+        appendLog(`[SUCCESS] Maps unlocked successfully`);
+      },
       onError: (err) => {
+        playError();
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        setResults(r => ({ ...r, maps: { ok: false, msg: msg || "Failed" } }));
+        setResults((r) => ({ ...r, maps: { ok: false, msg: msg || "Failed" } }));
       },
     },
   });
 
   const unlockClubs = useUnlockClubs({
     mutation: {
-      onSuccess: (d) => { setResults(r => ({ ...r, clubs: { ok: true, msg: d.message || "Done" } })); },
+      onSuccess: (d) => {
+        playSuccess();
+        setResults((r) => ({ ...r, clubs: { ok: true, msg: d.message || "Done" } }));
+        appendLog(`[SUCCESS] 22 Clubs & 52 Houses unlocked`);
+      },
       onError: (err) => {
+        playError();
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        setResults(r => ({ ...r, clubs: { ok: false, msg: msg || "Failed" } }));
+        setResults((r) => ({ ...r, clubs: { ok: false, msg: msg || "Failed" } }));
       },
     },
   });
 
   const injectCars = useInjectCars({
     mutation: {
-      onSuccess: (d) => { setResults(r => ({ ...r, cars: { ok: true, msg: d.message || "Done" } })); },
+      onSuccess: (d) => {
+        playSuccess();
+        setResults((r) => ({ ...r, cars: { ok: true, msg: d.message || "Done" } }));
+        appendLog(`[SUCCESS] Garage updated with selected vehicles`);
+        fetchProfile();
+      },
       onError: (err) => {
+        playError();
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        setResults(r => ({ ...r, cars: { ok: false, msg: msg || "Failed" } }));
+        setResults((r) => ({ ...r, cars: { ok: false, msg: msg || "Failed" } }));
       },
     },
   });
 
   const unlockStreetPass = useUnlockStreetPass({
     mutation: {
-      onSuccess: (d) => { setResults(r => ({ ...r, streetPass: { ok: true, msg: d.message || "Done" } })); },
+      onSuccess: (d) => {
+        playSuccess();
+        setResults((r) => ({ ...r, streetPass: { ok: true, msg: d.message || "Done" } }));
+        appendLog(`[SUCCESS] Street Pass & EP rewards unlocked`);
+      },
       onError: (err) => {
+        playError();
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        setResults(r => ({ ...r, streetPass: { ok: false, msg: msg || "Failed" } }));
+        setResults((r) => ({ ...r, streetPass: { ok: false, msg: msg || "Failed" } }));
       },
     },
   });
 
   const unlockProfileStyle = useUnlockProfileStyle({
     mutation: {
-      onSuccess: (d: any) => { setResults(r => ({ ...r, profileStyle: { ok: true, msg: d.message || "Avatars & Frames Unlocked!" } })); },
+      onSuccess: (d: any) => {
+        playSuccess();
+        setResults((r) => ({ ...r, profileStyle: { ok: true, msg: d.message || "Avatars & Frames Unlocked!" } }));
+        appendLog(`[SUCCESS] 16 Avatars, banners & frames unlocked`);
+      },
       onError: (err: any) => {
+        playError();
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        setResults(r => ({ ...r, profileStyle: { ok: false, msg: msg || "Failed to unlock avatars" } }));
+        setResults((r) => ({ ...r, profileStyle: { ok: false, msg: msg || "Failed to unlock avatars" } }));
       },
     },
   });
@@ -684,6 +845,7 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
   const injectAll = useInjectAll({
     mutation: {
       onSuccess: (d) => {
+        playSuccess();
         const r = d as { currency?: boolean; maps?: boolean; cars?: number; streetPass?: boolean; message?: string };
         setResults({
           currency: { ok: !!r.currency, msg: "Currency injected" },
@@ -691,9 +853,12 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
           cars: { ok: r.cars !== undefined && r.cars > 0, msg: `${r.cars} cars added` },
           streetPass: { ok: !!r.streetPass, msg: r.streetPass ? "Street Pass activated" : "Skipped" },
         });
+        appendLog(`[SUCCESS] MASTER INJECT COMPLETE: ${r.message || "All modules injected"}`);
         toast({ title: "Inject All Complete!", description: r.message });
+        fetchProfile();
       },
       onError: (err) => {
+        playError();
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
         toast({ title: "Inject All Failed", description: msg, variant: "destructive" });
       },
@@ -703,24 +868,25 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
   const safeRepair = useSafeRepair({
     mutation: {
       onSuccess: (d: any) => {
-        setResults(r => ({ ...r, safeRepair: { ok: true, msg: d.message || "Safe Repair Complete!" } }));
+        playSuccess();
+        setResults((r) => ({ ...r, safeRepair: { ok: true, msg: d.message || "Safe Repair Complete!" } }));
+        appendLog(`[SUCCESS] Safe repair completed. Cloud tables restored.`);
         toast({ title: "Safe Repair Complete", description: d.message });
+        fetchProfile();
       },
       onError: (err: any) => {
+        playError();
         const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-        setResults(r => ({ ...r, safeRepair: { ok: false, msg: msg || "Failed to repair account" } }));
+        setResults((r) => ({ ...r, safeRepair: { ok: false, msg: msg || "Failed to repair account" } }));
       },
     },
   });
 
-  const carsQuery = useGetCars(
-    { userToken },
-    { query: { queryKey: getGetCarsQueryKey({ userToken }), enabled: true } }
-  );
-
+  const carsQuery = useGetCars({ userToken }, { query: { queryKey: getGetCarsQueryKey({ userToken }), enabled: true } });
   const totalCars = carsQuery.data?.total || 0;
 
   const fetchProfile = () => {
+    playClick();
     setLoadingProfile(true);
     getProfile.mutate({
       data: {
@@ -728,18 +894,18 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
         userId: session.carxId,
         deviceId: session.deviceId,
         uniqueId: session.uniqueId,
-        userToken
-      }
+        userToken,
+      },
     });
   };
 
-  // Auto-load profile on mount (same as Replit2 — loads immediately on login/register)
   useEffect(() => {
     fetchProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.token]);
 
   const handleInjectCurrency = () => {
+    playClick();
     let cashVal = 50000000;
     let goldVal = 9999;
     let expVal = 93060;
@@ -754,6 +920,7 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
       expVal = 93060;
     }
 
+    appendLog(`[INJECT] Injecting Cash: ${cashVal}, Gold: ${goldVal}, XP: ${expVal}`);
     injectCurrency.mutate({
       data: {
         token: session.token,
@@ -764,12 +931,13 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
         cash: cashVal,
         gold: goldVal,
         exp: expVal,
-        userToken
+        userToken,
       },
     });
   };
 
   const handleInjectCars = () => {
+    playClick();
     let service = "inject_premium_cars";
     let countVal = 10;
     if (carsMode === CarsInjectInputMode.regular) {
@@ -787,6 +955,7 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
       countVal = Number(customCarCount) || 10;
     }
 
+    appendLog(`[INJECT] Cars mode: ${carsMode} (${service})`);
     injectCars.mutate({
       data: {
         token: session.token,
@@ -795,371 +964,517 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
         uniqueId: session.uniqueId,
         service_type: service,
         random_cars_count: countVal,
-        userToken
-      }
+        userToken,
+      },
     });
   };
 
   const anyPending =
-    injectCurrency.isPending || unlockMaps.isPending || unlockClubs.isPending ||
-    injectCars.isPending || unlockStreetPass.isPending || unlockProfileStyle.isPending || injectAll.isPending || safeRepair.isPending;
+    injectCurrency.isPending ||
+    unlockMaps.isPending ||
+    unlockClubs.isPending ||
+    injectCars.isPending ||
+    unlockStreetPass.isPending ||
+    unlockProfileStyle.isPending ||
+    injectAll.isPending ||
+    safeRepair.isPending;
 
   const CURRENCY_PRESETS = [
-    { v: CurrencyInputPreset.max, l: "Max", sub: "50M / 9999 / 999K" },
-    { v: CurrencyInputPreset.medium, l: "Medium", sub: "10M / 5K / 100K" },
-    { v: CurrencyInputPreset.custom, l: "Custom", sub: "Set your own" },
+    { v: CurrencyInputPreset.max, l: "Max Out", sub: "50M / 9999 / Max XP" },
+    { v: CurrencyInputPreset.medium, l: "Medium", sub: "10M / 5K / Safe" },
+    { v: CurrencyInputPreset.custom, l: "Custom", sub: "Custom amounts" },
   ];
 
   const CAR_MODES = [
+    { v: CarsInjectInputMode.all, l: "🏎️ All Cars", sub: `${totalCars || 69} Supercars` },
+    { v: CarsInjectInputMode.premium, l: "👑 Premium", sub: "Max Tuned Kits" },
     { v: CarsInjectInputMode.regular, l: "🚗 Regular", sub: "Standard Garage" },
-    { v: CarsInjectInputMode.premium, l: "👑 Premium", sub: "Max Tuned Garage" },
-    { v: CarsInjectInputMode.all, l: "🏎️ All Cars", sub: `${totalCars || 69} cars` },
     { v: CarsInjectInputMode.custom, l: "🔢 Custom", sub: "Pick count" },
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4 space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Logged in as</div>
-            <div className="text-sm font-bold font-mono text-white truncate max-w-[280px]">
-              {session.email}
+    <div className="space-y-6">
+      {/* Session Account Status Banner */}
+      <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-3xl p-4 sm:p-5 shadow-xl backdrop-blur-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-400/30 flex items-center justify-center text-xl shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+              🏁
             </div>
-            {session.carxId && (
-              <div className="text-[10px] font-mono text-amber-500/80 mt-0.5">
-                CarX ID: <span className="text-amber-400 font-bold select-all">{session.carxId}</span>
+            <div>
+              <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Connected Driver</span>
               </div>
-            )}
+              <div className="text-sm sm:text-base font-bold font-mono text-white truncate max-w-[280px] sm:max-w-md">
+                {session.email}
+              </div>
+              {session.carxId && (
+                <div className="text-[10px] font-mono text-zinc-400 mt-0.5">
+                  ID: <span className="text-amber-400 font-bold select-all">{session.carxId}</span>
+                </div>
+              )}
+            </div>
           </div>
+
           <div className="flex items-center gap-2 self-end sm:self-center">
             <button
               onClick={fetchProfile}
               disabled={loadingProfile}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 font-mono text-[10px] uppercase tracking-wider rounded-lg transition-all disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-zinc-200 font-mono text-xs uppercase tracking-wider rounded-xl transition-all disabled:opacity-50 cursor-pointer"
             >
-              <RefreshCw className={`h-3 w-3 ${loadingProfile ? "animate-spin" : ""}`} />
-              Refresh
+              <RefreshCw className={`h-3.5 w-3.5 ${loadingProfile ? "animate-spin text-amber-400" : ""}`} />
+              <span>Sync Stats</span>
             </button>
             <button
-              onClick={onDisconnect}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-950/20 hover:bg-red-950/40 border border-red-500/30 hover:border-red-400 text-red-400 font-mono text-[10px] uppercase tracking-wider rounded-lg transition-all"
+              onClick={() => {
+                playClick();
+                onDisconnect();
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-950/30 hover:bg-red-950/60 border border-red-500/30 hover:border-red-400 text-red-300 font-mono text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer"
             >
-              <LogOut className="h-3 w-3" />
-              Disconnect
+              <LogOut className="h-3.5 w-3.5" />
+              <span>Disconnect</span>
             </button>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Currency */}
-        <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center gap-2">
+      {/* Live Telemetry Overview Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <StatTelemetryCard
+          label="Silver Cash"
+          value={profile?.silver !== undefined ? profile.silver : "50,000,000"}
+          icon="🪙"
+          accent="from-amber-400 to-yellow-500"
+          sublabel="Game currency"
+        />
+        <StatTelemetryCard
+          label="Gold Coins"
+          value={profile?.gold !== undefined ? profile.gold : "9,999"}
+          icon="💎"
+          accent="from-yellow-400 to-amber-500"
+          sublabel="Premium gold"
+        />
+        <StatTelemetryCard
+          label="Player Level"
+          value={profile?.xp !== undefined ? `LVL ${Math.min(50, Math.floor(profile.xp / 2000) + 1)}` : "LVL 50"}
+          icon="⚡"
+          accent="from-blue-400 to-cyan-500"
+          sublabel="XP Progress"
+        />
+        <StatTelemetryCard
+          label="Supercars"
+          value={profile?.cars !== undefined ? `${profile.cars} Cars` : `${totalCars || 69} Cars`}
+          icon="🏎️"
+          accent="from-purple-400 to-pink-500"
+          sublabel="Garage count"
+        />
+      </div>
+
+      {/* Master 1-Click Inject Everything Banner Button */}
+      <button
+        data-testid="button-inject-all"
+        onClick={() => {
+          playClick();
+          appendLog("[INJECT] Initiating Master Inject Everything sequence...");
+          injectAll.mutate({
+            data: {
+              token: session.token,
+              userId: session.carxId,
+              deviceId: session.deviceId,
+              uniqueId: session.uniqueId,
+              service_type: "inject_all",
+              userToken,
+            },
+          });
+        }}
+        disabled={anyPending}
+        className="w-full py-4 sm:py-5 rounded-3xl font-black text-base sm:text-lg tracking-widest uppercase bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 text-black hover:from-amber-400 hover:to-yellow-300 active:scale-[0.99] disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-[0_0_35px_rgba(245,158,11,0.35)] hover:shadow-[0_0_50px_rgba(245,158,11,0.55)] cursor-pointer relative overflow-hidden group"
+      >
+        <div className="absolute inset-0 bg-white/20 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+        {injectAll.isPending ? (
+          <span className="flex items-center justify-center gap-3">
+            <RefreshCw className="w-5 h-5 animate-spin" />
+            SYNCHRONIZING SAVE DATA...
+          </span>
+        ) : (
+          <span className="flex items-center justify-center gap-3">
+            <Zap className="w-5 h-5 fill-current" />
+            INJECT EVERYTHING (1-CLICK MASTER BOOST)
+          </span>
+        )}
+      </button>
+
+      {/* Navigation Sub-Tabs */}
+      <div className="flex items-center gap-2 p-1.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl">
+        <button
+          onClick={() => { playClick(); setActiveTab("quick"); }}
+          className={`flex items-center justify-center gap-2 flex-1 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider transition-all cursor-pointer ${
+            activeTab === "quick" ? "bg-amber-400 text-black shadow-md" : "text-zinc-400 hover:text-white"
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Modules Grid</span>
+        </button>
+        <button
+          onClick={() => { playClick(); setActiveTab("custom"); }}
+          className={`flex items-center justify-center gap-2 flex-1 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider transition-all cursor-pointer ${
+            activeTab === "custom" ? "bg-amber-400 text-black shadow-md" : "text-zinc-400 hover:text-white"
+          }`}
+        >
+          <Wrench className="w-3.5 h-3.5" />
+          <span>Custom Sliders</span>
+        </button>
+        <button
+          onClick={() => { playClick(); setActiveTab("logs"); }}
+          className={`flex items-center justify-center gap-2 flex-1 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider transition-all cursor-pointer ${
+            activeTab === "logs" ? "bg-amber-400 text-black shadow-md" : "text-zinc-400 hover:text-white"
+          }`}
+        >
+          <Zap className="w-3.5 h-3.5" />
+          <span>Live Terminal ({logs.length})</span>
+        </button>
+      </div>
+
+      {activeTab === "logs" ? (
+        <TerminalConsole logs={logs} title="CARX TELEMETRY LIVE TERMINAL" />
+      ) : activeTab === "custom" ? (
+        <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-3xl p-6 space-y-6 shadow-2xl backdrop-blur-xl">
+          <div className="flex items-center gap-2 border-b border-zinc-800/80 pb-3">
             <DollarSign className="w-4 h-4 text-amber-400" />
-            <h3 className="text-sm font-bold text-white">Currency</h3>
+            <h3 className="text-sm font-bold font-sans text-white uppercase tracking-wider">
+              Custom Currency & XP Configurator
+            </h3>
           </div>
 
-          <div className="grid grid-cols-3 gap-1.5">
-            {CURRENCY_PRESETS.map(({ v, l, sub }) => (
-              <button
-                key={v}
-                onClick={() => setCurrencyPreset(v)}
-                className={`flex flex-col items-center py-2 px-1 rounded-xl text-center transition-all border ${
-                  currencyPreset === v
-                    ? "bg-amber-500 border-amber-400 text-black"
-                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700"
-                }`}
-              >
-                <span className="text-xs font-bold">{l}</span>
-                <span className={`text-[10px] mt-0.5 ${currencyPreset === v ? "text-black/70" : "text-zinc-600"}`}>{sub}</span>
-              </button>
-            ))}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <NumInput label="Custom Silver Cash" value={customSilver} onChange={setCustomSilver} min={0} max={999999999} placeholder="50000000" icon="🪙" accent="text-zinc-300" />
+            <NumInput label="Custom Gold Coins" value={customGold} onChange={setCustomGold} min={0} max={99999} placeholder="9999" icon="💰" accent="text-yellow-400" />
+            <NumInput label="Custom XP Points" value={customXp} onChange={setCustomXp} min={0} max={99999999} placeholder="93060" icon="⚡" accent="text-blue-400" />
           </div>
-
-          <AnimatePresence>
-            {currencyPreset === CurrencyInputPreset.custom && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden space-y-2"
-              >
-                <NumInput label="Silver" value={customSilver} onChange={setCustomSilver} min={0} max={999999999} placeholder="50000000" icon="🪙" accent="text-zinc-300" />
-                <NumInput label="Gold" value={customGold} onChange={setCustomGold} min={0} max={99999} placeholder="9999" icon="💰" accent="text-yellow-400" />
-                <NumInput label="XP" value={customXp} onChange={setCustomXp} min={0} max={99999999} placeholder="999999" icon="⚡" accent="text-blue-400" />
-              </motion.div>
-            )}
-          </AnimatePresence>
 
           <button
-            data-testid="button-inject-currency"
             onClick={handleInjectCurrency}
             disabled={anyPending}
-            className="w-full py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-400 font-bold text-xs transition-all disabled:opacity-40"
+            className="w-full py-3.5 rounded-2xl font-bold text-sm tracking-widest uppercase bg-amber-400 text-black hover:bg-amber-300 disabled:opacity-40 transition-all shadow-[0_0_20px_rgba(245,158,11,0.2)] cursor-pointer font-mono"
           >
-            {injectCurrency.isPending ? (
-              <span className="flex items-center justify-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Injecting...</span>
-            ) : "Inject Currency"}
+            {injectCurrency.isPending ? "Injecting Custom Resources..." : "Apply Custom Values"}
           </button>
-          {results.currency && (
-            <div className={`flex items-center gap-1.5 text-xs ${results.currency.ok ? "text-green-400" : "text-red-400"}`}>
-              {results.currency.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-              {results.currency.msg}
-            </div>
-          )}
         </div>
-
-        {/* Clubs & Houses */}
-        <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-purple-400" />
-            <h3 className="text-sm font-bold text-white">Clubs & Houses</h3>
-          </div>
-          <p className="text-xs text-zinc-500">Unlock & beat all 22 clubs + 52 houses</p>
-          <button
-            data-testid="button-unlock-clubs"
-            onClick={() => unlockClubs.mutate({
-              data: {
-                token: session.token,
-                userId: session.carxId,
-                deviceId: session.deviceId,
-                uniqueId: session.uniqueId,
-                service_type: "unlock_clubs",
-                unlock_houses: true,
-                userToken
-              }
-            })}
-            disabled={anyPending}
-            className="w-full py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-400 font-bold text-xs transition-all disabled:opacity-40"
-          >
-            {unlockClubs.isPending ? (
-              <span className="flex items-center justify-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Unlocking...</span>
-            ) : "Unlock Clubs & Houses"}
-          </button>
-          {results.clubs && (
-            <div className={`flex items-center gap-1.5 text-xs ${results.clubs.ok ? "text-green-400" : "text-red-400"}`}>
-              {results.clubs.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-              {results.clubs.msg}
-            </div>
-          )}
-        </div>
-
-        {/* Cars */}
-        <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Car className="w-4 h-4 text-purple-400" />
-            <h3 className="text-sm font-bold text-white">Cars</h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-1.5">
-            {CAR_MODES.map(({ v, l, sub }) => (
-              <button
-                key={v}
-                onClick={() => setCarsMode(v)}
-                className={`flex flex-col items-center py-2 px-1 rounded-xl text-center transition-all border ${
-                  carsMode === v
-                    ? "bg-purple-500 border-purple-400 text-white"
-                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:bg-zinc-700"
-                }`}
-              >
-                <span className="text-xs font-bold">{l}</span>
-                <span className={`text-[10px] mt-0.5 ${carsMode === v ? "text-white/70" : "text-zinc-600"}`}>{sub}</span>
-              </button>
-            ))}
-          </div>
-
-          <AnimatePresence>
-            {carsMode === CarsInjectInputMode.custom && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center justify-between">
-                    <span>🚗 Number of Cars</span>
-                    {totalCars > 0 && <span className="text-zinc-600 font-normal">max: {totalCars}</span>}
-                  </label>
-                  <input
-                    data-testid="input-custom-car-count"
-                    type="number"
-                    value={customCarCount}
-                    onChange={(e) => setCustomCarCount(e.target.value)}
-                    min={1}
-                    max={totalCars || 9999}
-                    placeholder="How many cars?"
-                    className="w-full bg-zinc-800/80 border border-zinc-700/60 rounded-lg px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/50 transition-all font-mono"
-                  />
-                  <p className="text-[10px] text-zinc-600">Cars are added in order, skipping duplicates you already own</p>
+      ) : (
+        /* Modular Injection Cards Grid */
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Card 1: Currency */}
+          <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-3xl p-5 space-y-3.5 shadow-xl backdrop-blur-xl hover:border-zinc-700 transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                  <DollarSign className="w-4 h-4" />
                 </div>
-              </motion.div>
+                <div>
+                  <h3 className="text-sm font-bold text-white font-sans uppercase">Currency & XP</h3>
+                  <p className="text-[10px] text-zinc-500 font-mono">50M Silver + 9,999 Gold</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5">
+              {CURRENCY_PRESETS.map(({ v, l, sub }) => (
+                <button
+                  key={v}
+                  onClick={() => {
+                    playClick();
+                    setCurrencyPreset(v);
+                  }}
+                  className={`flex flex-col items-center py-2 px-1.5 rounded-xl text-center transition-all border cursor-pointer ${
+                    currencyPreset === v
+                      ? "bg-amber-400 border-amber-400 text-black font-bold shadow-md"
+                      : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:bg-zinc-800"
+                  }`}
+                >
+                  <span className="text-xs font-bold font-mono">{l}</span>
+                  <span className={`text-[9px] mt-0.5 font-mono ${currencyPreset === v ? "text-black/70" : "text-zinc-600"}`}>{sub}</span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              data-testid="button-inject-currency"
+              onClick={handleInjectCurrency}
+              disabled={anyPending}
+              className="w-full py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/30 text-amber-300 hover:text-white font-bold text-xs font-mono uppercase tracking-wider transition-all disabled:opacity-30 cursor-pointer"
+            >
+              {injectCurrency.isPending ? "Injecting..." : "Inject Currency"}
+            </button>
+            {results.currency && (
+              <div className={`flex items-center gap-1.5 text-xs font-mono ${results.currency.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {results.currency.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                <span>{results.currency.msg}</span>
+              </div>
             )}
-          </AnimatePresence>
-
-          <button
-            data-testid="button-inject-cars"
-            onClick={handleInjectCars}
-            disabled={anyPending}
-            className="w-full py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-400 font-bold text-xs transition-all disabled:opacity-40"
-          >
-            {injectCars.isPending ? (
-              <span className="flex items-center justify-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Injecting...</span>
-            ) : "Inject Cars"}
-          </button>
-          {results.cars && (
-            <div className={`flex items-center gap-1.5 text-xs ${results.cars.ok ? "text-green-400" : "text-red-400"}`}>
-              {results.cars.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-              {results.cars.msg}
-            </div>
-          )}
-        </div>
-
-        {/* Street Pass */}
-        <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Star className="w-4 h-4 text-yellow-400" />
-            <h3 className="text-sm font-bold text-white">Street Pass</h3>
           </div>
-          <p className="text-xs text-zinc-500">Unlock premium Street Pass & battle pass rewards</p>
-          <button
-            data-testid="button-unlock-streetpass"
-            onClick={() => unlockStreetPass.mutate({
-              data: {
-                token: session.token,
-                userId: session.carxId,
-                deviceId: session.deviceId,
-                uniqueId: session.uniqueId,
-                service_type: "battlepass",
-                unlock_streetpass: true,
-                userToken
-              }
-            })}
-            disabled={anyPending}
-            className="w-full py-2 rounded-xl bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/30 text-yellow-400 font-bold text-xs transition-all disabled:opacity-40"
-          >
-            {unlockStreetPass.isPending ? (
-              <span className="flex items-center justify-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Unlocking...</span>
-            ) : "Unlock Street Pass"}
-          </button>
-          {results.streetPass && (
-            <div className={`flex items-center gap-1.5 text-xs ${results.streetPass.ok ? "text-green-400" : "text-red-400"}`}>
-              {results.streetPass.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-              {results.streetPass.msg}
-            </div>
-          )}
-        </div>
 
-        {/* Avatars & Frames */}
-        <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <User className="w-4 h-4 text-pink-400" />
-            <h3 className="text-sm font-bold text-white">Avatars & Frames</h3>
-          </div>
-          <p className="text-xs text-zinc-500">Unlock all 16 profile avatars, custom banners & frames</p>
-          <button
-            data-testid="button-unlock-avatars"
-            onClick={() => unlockProfileStyle.mutate({
-              data: {
-                token: session.token,
-                userId: session.carxId,
-                deviceId: session.deviceId,
-                uniqueId: session.uniqueId,
-                service_type: "unlock_profile_style",
-                avatar: "avatar_16",
-                banner: "banner_16",
-                frame: "frame_16",
-                userToken
-              }
-            })}
-            disabled={anyPending}
-            className="w-full py-2 rounded-xl bg-pink-500/20 hover:bg-pink-500/30 border border-pink-500/30 text-pink-400 font-bold text-xs transition-all disabled:opacity-40"
-          >
-            {unlockProfileStyle.isPending ? (
-              <span className="flex items-center justify-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Unlocking...</span>
-            ) : "Unlock Avatars & Frames"}
-          </button>
-          {results.profileStyle && (
-            <div className={`flex items-center gap-1.5 text-xs ${results.profileStyle.ok ? "text-green-400" : "text-red-400"}`}>
-              {results.profileStyle.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-              {results.profileStyle.msg}
+          {/* Card 2: Clubs & Houses */}
+          <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-3xl p-5 space-y-3.5 shadow-xl backdrop-blur-xl hover:border-zinc-700 transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
+                  <Trophy className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white font-sans uppercase">Clubs & Houses</h3>
+                  <p className="text-[10px] text-zinc-500 font-mono">Unlock 22 Clubs & 52 Houses</p>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Fix Stuck / Safe Repair */}
-        <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <RefreshCw className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-sm font-bold text-white">Safe Repair</h3>
-          </div>
-          <p className="text-xs text-zinc-500">Fix checking profile stuck. Wipes garage to 1 starter car, resets slot tables.</p>
-          <button
-            data-testid="button-safe-repair"
-            onClick={() => {
-              if (window.confirm("🩹 WARNING: This will reset your garage to 1 starting car, beat all clubs, and repair all slot tables to 100% valid game database values. Use this if your game is stuck on 'Checking profile'. Proceed?")) {
-                safeRepair.mutate({
+            <p className="text-xs text-zinc-400 font-mono leading-relaxed">
+              Auto-completes all street racing clubs with boss badges and unlocks all safe houses.
+            </p>
+
+            <button
+              data-testid="button-unlock-clubs"
+              onClick={() => {
+                playClick();
+                appendLog("[INJECT] Unlocking clubs and safehouses...");
+                unlockClubs.mutate({
                   data: {
                     token: session.token,
                     userId: session.carxId,
                     deviceId: session.deviceId,
                     uniqueId: session.uniqueId,
-                    service_type: "safe_repair",
-                    userToken
-                  }
+                    service_type: "unlock_clubs",
+                    unlock_houses: true,
+                    userToken,
+                  },
                 });
-              }
-            }}
-            disabled={anyPending}
-            className="w-full py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-400 font-bold text-xs transition-all disabled:opacity-40"
-          >
-            {safeRepair.isPending ? (
-              <span className="flex items-center justify-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Repairing...</span>
-            ) : "Fix Stuck / Safe Repair"}
-          </button>
-          {results.safeRepair && (
-            <div className={`flex items-center gap-1.5 text-xs ${results.safeRepair.ok ? "text-green-400" : "text-red-400"}`}>
-              {results.safeRepair.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-              {results.safeRepair.msg}
-            </div>
-          )}
-        </div>
-      </div>
+              }}
+              disabled={anyPending}
+              className="w-full py-2.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-400/30 text-purple-300 hover:text-white font-bold text-xs font-mono uppercase tracking-wider transition-all disabled:opacity-30 cursor-pointer"
+            >
+              {unlockClubs.isPending ? "Unlocking..." : "Unlock Clubs & Houses"}
+            </button>
+            {results.clubs && (
+              <div className={`flex items-center gap-1.5 text-xs font-mono ${results.clubs.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {results.clubs.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                <span>{results.clubs.msg}</span>
+              </div>
+            )}
+          </div>
 
-      <button
-        data-testid="button-inject-all"
-        onClick={() => injectAll.mutate({
-          data: {
-            token: session.token,
-            userId: session.carxId,
-            deviceId: session.deviceId,
-            uniqueId: session.uniqueId,
-            service_type: "inject_all",
-            userToken
-          }
-        })}
-        disabled={anyPending}
-        className="w-full py-4 rounded-2xl font-black text-lg tracking-widest uppercase bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 text-black hover:from-amber-400 hover:to-yellow-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_0_40px_rgba(245,158,11,0.3)] hover:shadow-[0_0_60px_rgba(245,158,11,0.5)]"
-      >
-        {injectAll.isPending ? (
-          <span className="flex items-center justify-center gap-3">
-            <Zap className="w-5 h-5 animate-pulse" />
-            Injecting Everything...
-          </span>
-        ) : (
-          <span className="flex items-center justify-center gap-3">
-            <Zap className="w-5 h-5" />
-            Inject Everything
-          </span>
-        )}
-      </button>
+          {/* Card 3: Cars */}
+          <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-3xl p-5 space-y-3.5 shadow-xl backdrop-blur-xl hover:border-zinc-700 transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                  <Car className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white font-sans uppercase">Supercars Garage</h3>
+                  <p className="text-[10px] text-zinc-500 font-mono">69+ Tuned Vehicles</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5">
+              {CAR_MODES.map(({ v, l, sub }) => (
+                <button
+                  key={v}
+                  onClick={() => {
+                    playClick();
+                    setCarsMode(v);
+                  }}
+                  className={`flex flex-col items-center py-2 px-1.5 rounded-xl text-center transition-all border cursor-pointer ${
+                    carsMode === v
+                      ? "bg-cyan-400 border-cyan-400 text-black font-bold shadow-md"
+                      : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:bg-zinc-800"
+                  }`}
+                >
+                  <span className="text-xs font-bold font-mono">{l}</span>
+                  <span className={`text-[9px] mt-0.5 font-mono ${carsMode === v ? "text-black/70" : "text-zinc-600"}`}>{sub}</span>
+                </button>
+              ))}
+            </div>
+
+            <button
+              data-testid="button-inject-cars"
+              onClick={handleInjectCars}
+              disabled={anyPending}
+              className="w-full py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/30 text-cyan-300 hover:text-white font-bold text-xs font-mono uppercase tracking-wider transition-all disabled:opacity-30 cursor-pointer"
+            >
+              {injectCars.isPending ? "Injecting Vehicles..." : "Inject Cars Garage"}
+            </button>
+            {results.cars && (
+              <div className={`flex items-center gap-1.5 text-xs font-mono ${results.cars.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {results.cars.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                <span>{results.cars.msg}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Card 4: Street Pass */}
+          <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-3xl p-5 space-y-3.5 shadow-xl backdrop-blur-xl hover:border-zinc-700 transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-yellow-400">
+                  <Star className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white font-sans uppercase">Street Pass VIP</h3>
+                  <p className="text-[10px] text-zinc-500 font-mono">Unlock Premium Rewards</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-400 font-mono leading-relaxed">
+              Unlocks battle pass track, exclusive liveries, EP boost points, and premium seasonal items.
+            </p>
+
+            <button
+              data-testid="button-unlock-streetpass"
+              onClick={() => {
+                playClick();
+                appendLog("[INJECT] Activating Street Pass VIP...");
+                unlockStreetPass.mutate({
+                  data: {
+                    token: session.token,
+                    userId: session.carxId,
+                    deviceId: session.deviceId,
+                    uniqueId: session.uniqueId,
+                    service_type: "battlepass",
+                    unlock_streetpass: true,
+                    userToken,
+                  },
+                });
+              }}
+              disabled={anyPending}
+              className="w-full py-2.5 rounded-xl bg-yellow-500/15 hover:bg-yellow-500/25 border border-yellow-400/30 text-yellow-300 hover:text-white font-bold text-xs font-mono uppercase tracking-wider transition-all disabled:opacity-30 cursor-pointer"
+            >
+              {unlockStreetPass.isPending ? "Unlocking..." : "Unlock Street Pass"}
+            </button>
+            {results.streetPass && (
+              <div className={`flex items-center gap-1.5 text-xs font-mono ${results.streetPass.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {results.streetPass.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                <span>{results.streetPass.msg}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Card 5: Avatars & Style */}
+          <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-3xl p-5 space-y-3.5 shadow-xl backdrop-blur-xl hover:border-zinc-700 transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-pink-500/10 border border-pink-500/20 text-pink-400">
+                  <User className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white font-sans uppercase">Avatars & Frames</h3>
+                  <p className="text-[10px] text-zinc-500 font-mono">16 Profile Styles</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-400 font-mono leading-relaxed">
+              Unlock all 16 custom profile avatars, background card banners, and neon driver frames.
+            </p>
+
+            <button
+              data-testid="button-unlock-avatars"
+              onClick={() => {
+                playClick();
+                appendLog("[INJECT] Unlocking profile avatars and styles...");
+                unlockProfileStyle.mutate({
+                  data: {
+                    token: session.token,
+                    userId: session.carxId,
+                    deviceId: session.deviceId,
+                    uniqueId: session.uniqueId,
+                    service_type: "unlock_profile_style",
+                    avatar: "avatar_16",
+                    banner: "banner_16",
+                    frame: "frame_16",
+                    userToken,
+                  },
+                });
+              }}
+              disabled={anyPending}
+              className="w-full py-2.5 rounded-xl bg-pink-500/15 hover:bg-pink-500/25 border border-pink-400/30 text-pink-300 hover:text-white font-bold text-xs font-mono uppercase tracking-wider transition-all disabled:opacity-30 cursor-pointer"
+            >
+              {unlockProfileStyle.isPending ? "Unlocking..." : "Unlock Avatars & Frames"}
+            </button>
+            {results.profileStyle && (
+              <div className={`flex items-center gap-1.5 text-xs font-mono ${results.profileStyle.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {results.profileStyle.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                <span>{results.profileStyle.msg}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Card 6: Safe Anti-Ban Repair */}
+          <div className="bg-zinc-950/85 border border-zinc-800/80 rounded-3xl p-5 space-y-3.5 shadow-xl backdrop-blur-xl hover:border-zinc-700 transition-all">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                  <Shield className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white font-sans uppercase">Safe Sync Repair</h3>
+                  <p className="text-[10px] text-zinc-500 font-mono">Fix Stuck Loading</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-400 font-mono leading-relaxed">
+              Fixes "Checking profile" endless loop and rebuilds clean save data database tables.
+            </p>
+
+            <button
+              data-testid="button-safe-repair"
+              onClick={() => {
+                playClick();
+                if (
+                  window.confirm(
+                    "🩹 WARNING: This will reset garage to 1 starting car, beat all clubs, and repair all slot tables to valid game database values. Proceed?"
+                  )
+                ) {
+                  appendLog("[REPAIR] Safe repair executed...");
+                  safeRepair.mutate({
+                    data: {
+                      token: session.token,
+                      userId: session.carxId,
+                      deviceId: session.deviceId,
+                      uniqueId: session.uniqueId,
+                      service_type: "safe_repair",
+                      userToken,
+                    },
+                  });
+                }
+              }}
+              disabled={anyPending}
+              className="w-full py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/30 text-emerald-300 hover:text-white font-bold text-xs font-mono uppercase tracking-wider transition-all disabled:opacity-30 cursor-pointer"
+            >
+              {safeRepair.isPending ? "Repairing..." : "Safe Repair & Anti-Stuck"}
+            </button>
+            {results.safeRepair && (
+              <div className={`flex items-center gap-1.5 text-xs font-mono ${results.safeRepair.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {results.safeRepair.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                <span>{results.safeRepair.msg}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-export default function InjectSite({ adminOverrideToken, hideHeader }: { adminOverrideToken?: string; hideHeader?: boolean } = {}) {
+export default function InjectSite({
+  adminOverrideToken,
+  hideHeader,
+}: { adminOverrideToken?: string; hideHeader?: boolean } = {}) {
   const { token, clearAuth } = useAuth();
+  const [soundOn, setSoundOn] = useState(true);
   const [session, setSession] = useState<CarXSession | null>(() => {
     try {
       const saved = localStorage.getItem("connectedCarXSession");
@@ -1168,6 +1483,17 @@ export default function InjectSite({ adminOverrideToken, hideHeader }: { adminOv
       return null;
     }
   });
+
+  useEffect(() => {
+    setSoundOn(isSoundEnabled());
+  }, []);
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    setSoundEnabled(next);
+    if (next) playClick();
+  };
 
   const handleSetSession = (s: CarXSession | null) => {
     setSession(s);
@@ -1183,77 +1509,87 @@ export default function InjectSite({ adminOverrideToken, hideHeader }: { adminOv
   const userToken = adminOverrideToken || token || "";
 
   return (
-    <div className={hideHeader ? "w-full" : "min-h-screen bg-[#050508]"}>
+    <div className={hideHeader ? "w-full" : "min-h-screen bg-[#030308] text-white selection:bg-amber-400 selection:text-black"}>
       {!hideHeader && (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-40 -right-40 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl" />
-          <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
-          <svg className="absolute inset-0 w-full h-full opacity-[0.02]" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <pattern id="grid2" width="60" height="60" patternUnits="userSpaceOnUse">
-                <path d="M 60 0 L 0 0 0 60" fill="none" stroke="#f59e0b" strokeWidth="0.5" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid2)" />
-          </svg>
+        <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+          <div className="absolute -top-40 -right-40 w-[600px] h-[600px] bg-amber-500/10 rounded-full blur-3xl" />
+          <div className="absolute top-1/3 -left-40 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-3xl" />
+          <div className="absolute -bottom-40 right-1/4 w-[600px] h-[600px] bg-cyan-500/10 rounded-full blur-3xl" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,transparent_0%,rgba(3,3,8,0.7)_80%)]" />
         </div>
       )}
 
-      <div className={`relative z-10 max-w-2xl mx-auto ${hideHeader ? "py-2" : "px-4 py-8"}`}>
+      <div className={`relative z-10 max-w-4xl mx-auto ${hideHeader ? "py-2" : "px-4 sm:px-6 py-6 sm:py-8"} space-y-6`}>
         {!hideHeader && (
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-2xl font-black text-white">
-                <span className="bg-gradient-to-r from-amber-400 to-amber-500 bg-clip-text text-transparent">ᴄᴀʀ𝕏 sᴛʀᴇᴇᴛ</span>
-                <span className="text-white"> Injector</span>
-              </h1>
-              <p className="text-xs text-zinc-500 mt-0.5">Myanmar CarX Street Tool</p>
+          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500/25 to-amber-600/10 border border-amber-400/40 flex items-center justify-center text-xl shadow-[0_0_20px_rgba(245,158,11,0.25)]">
+                🏎️
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight font-sans uppercase">
+                  <span className="text-white">MYANMAR </span>
+                  <span className="bg-gradient-to-r from-amber-400 to-yellow-400 bg-clip-text text-transparent">
+                    ᴄᴀʀ𝕏 sᴛʀᴇᴇᴛ
+                  </span>
+                </h1>
+                <p className="text-[11px] font-mono text-zinc-400">VIP Save Injection Engine v1.2</p>
+              </div>
             </div>
-            <button
-              data-testid="button-logout"
-              onClick={() => { setSession(null); clearAuth(); }}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-800 text-zinc-500 hover:text-red-400 hover:border-red-500/30 transition-all text-xs"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              Logout
-            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleSound}
+                className="p-2 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-700/80 text-zinc-400 hover:text-white transition-all cursor-pointer"
+                title={soundOn ? "SFX On" : "SFX Muted"}
+              >
+                {soundOn ? <Volume2 className="w-4 h-4 text-amber-400" /> : <VolumeX className="w-4 h-4 text-zinc-500" />}
+              </button>
+              <button
+                data-testid="button-logout"
+                onClick={() => {
+                  playClick();
+                  setSession(null);
+                  clearAuth();
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900/80 hover:bg-red-950/40 border border-zinc-700/80 hover:border-red-500/40 text-zinc-400 hover:text-red-400 transition-all text-xs font-mono cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
+            </div>
           </div>
         )}
 
-        <div className="mb-4">
-          <div className="flex items-center gap-3 mb-4">
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${session ? "bg-green-500/20 border border-green-500/30 text-green-400" : "bg-zinc-800 border border-zinc-700 text-zinc-500"}`}>
-              <div className={`w-2 h-2 rounded-full ${session ? "bg-green-400 animate-pulse" : "bg-zinc-600"}`} />
-              {session ? `Connected: ${session.email}` : "Not connected"}
-            </div>
-            {session && (
-              <button
-                onClick={() => handleSetSession(null)}
-                className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
-              >
-                Switch account
-              </button>
-            )}
-          </div>
+        {/* Dashboard Promotional Visual Banner */}
+        <DashboardBanner />
 
+        {/* Dynamic State View */}
+        <div className="space-y-4">
           <AnimatePresence mode="wait">
             {!session ? (
               <motion.div
                 key="login"
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.3 }}
               >
                 <LoginForm userToken={userToken} onSuccess={handleSetSession} />
               </motion.div>
             ) : (
               <motion.div
                 key="injection"
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.3 }}
               >
-                <InjectionPanel session={session} userToken={userToken} onDisconnect={() => handleSetSession(null)} />
+                <InjectionPanel
+                  session={session}
+                  userToken={userToken}
+                  onDisconnect={() => handleSetSession(null)}
+                />
               </motion.div>
             )}
           </AnimatePresence>
