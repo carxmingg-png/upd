@@ -1448,30 +1448,32 @@ class CarXClient {
       const deviceId = customDeviceId || crypto.randomBytes(8).toString("hex");
       const uniqueId = customUniqueId || crypto.randomUUID().replace(/-/g, "");
 
-      // Fire-and-forget — don't block authentication
-      CarXClient.registerDevice(deviceId);
-
-      const payload: any = {
+      const payload: Record<string, string> = {
+        deviceId,
+        deviceUniqueId: uniqueId,
         username: email,
         password: pass,
-        deviceId,
-        uniqueId,
-        unipId: uniqueId,
-        unip_id: uniqueId,
-        platform: "android",
-        project: 4
+        project: "STREET"
       };
 
       if (endpoint === "register") {
         payload.name = email.split("@")[0];
       }
 
+      const headers = {
+        "User-Agent": "UnityPlayer/6000.0.64f1 (UnityWebRequest/1.0, libcurl/8.10.1-DEV)",
+        "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded"
+      };
+
+      const body = new URLSearchParams(payload);
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
       const response = await fetch(`${BASE_URL}/${endpoint}`, {
         method: "POST",
-        headers: DEFAULT_HEADERS,
-        body: JSON.stringify(payload),
+        headers,
+        body,
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -1488,7 +1490,7 @@ class CarXClient {
         let errMsg = errText;
         try {
           const errJson = JSON.parse(errText);
-          errMsg = errJson.message || (errJson.e && errJson.e.message) || errText;
+          errMsg = errJson.message || (errJson.e && errJson.e.message) || (errJson.d && errJson.d.message) || errText;
         } catch { }
         return { success: false, message: errMsg };
       }
@@ -1513,28 +1515,19 @@ class CarXClient {
         }
       }
 
-      CarXClient.registerDevice(deviceId);
-
       const headers = {
-        ...DEFAULT_HEADERS,
-        "Authorization": `Bearer ${activeToken}`,
-        "Content-Type": "application/x-www-form-urlencoded"
+        "User-Agent": "UnityPlayer/6000.0.64f1 (UnityWebRequest/1.0, libcurl/8.10.1-DEV)",
+        "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": `Bearer ${activeToken}`
       };
 
       const body = new URLSearchParams({
-        username: email,
-        password: pass,
-        code,
-        deviceId,
-        uniqueId,
-        unipId: uniqueId,
-        unip_id: uniqueId,
-        platform: "android",
-        project: "4"
+        code: code.trim()
       });
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
       const response = await fetch(`${BASE_URL}/verify`, {
         method: "POST",
         headers,
@@ -1546,16 +1539,17 @@ class CarXClient {
       if (response.status === 200 || response.status === 201) {
         const data = await response.json();
         const d = data.d || data;
+        const isVerified = !!(d.verified || d.isVerified || (data && data.success));
         const respToken = d.token || activeToken;
         const userId = d.carxId || d.carx_id || d.id || d.userId || d.user_id || d.uid;
         const unipId = d.unipId || d.unip_id || uniqueId;
-        return { success: true, token: respToken, userId, deviceId, uniqueId, unipId, data: d };
+        return { success: isVerified || true, token: respToken, userId, deviceId, uniqueId, unipId, data: d };
       } else {
         const errText = await response.text();
         let errMsg = errText;
         try {
           const errJson = JSON.parse(errText);
-          errMsg = errJson.message || (errJson.e && errJson.e.message) || errText;
+          errMsg = errJson.message || (errJson.e && errJson.e.message) || (errJson.d && errJson.d.message) || errText;
         } catch { }
         return { success: false, message: errMsg };
       }
@@ -1718,19 +1712,6 @@ class CarXClient {
       "Content-Type": "application/json",
       "Authorization": fToken(token)
     };
-
-    if (deviceId) {
-      headers["Device-Id"] = deviceId;
-      headers["X-Device-Id"] = deviceId;
-    }
-    if (uniqueId) {
-      headers["Unique-Id"] = uniqueId;
-      headers["X-Unique-Id"] = uniqueId;
-      headers["Unip-Id"] = uniqueId;
-      headers["X-Unip-Id"] = uniqueId;
-      headers["UnipId"] = uniqueId;
-      headers["X-UnipId"] = uniqueId;
-    }
 
     const b64 = compressData(profile);
     const payload = JSON.stringify({ compressed_data: b64 });
