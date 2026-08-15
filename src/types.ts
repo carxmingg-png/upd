@@ -83,3 +83,16 @@ export interface CarXAccount {
   statsFetchedAt?: number; // unix ms timestamp of last fetch
 }
 
+export interface AdminStringsData {
+  regular_cars_string?: string;
+  regularCarsString?: string;
+  premium_cars_string?: string;
+  premiumCarsString?: string;
+  cars_string?: string;
+  carsString?: string;
+  blueprint_string?: string;
+  blueprintString?: string;
+  updatedAt?: number | string;
+}
+
+export type CarPackageType = "regular" | "premium" | "all";

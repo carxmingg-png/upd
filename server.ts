@@ -11,7 +11,8 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Resolve paths
 const KEYS_FILE = path.join(process.cwd(), "keys.json");
@@ -294,13 +295,18 @@ async function loadKeysDb(forceRefresh = false) {
           admins: doc.admins || [],
           owners: doc.owners || [],
           total_credits_used: doc.total_credits_used || 0,
-          total_accounts_generated: doc.total_accounts_generated || 0
+          total_accounts_generated: doc.total_accounts_generated || 0,
+          custom_regular_cars_string: doc.custom_regular_cars_string || doc.regular_cars_string || "",
+          custom_premium_cars_string: doc.custom_premium_cars_string || doc.premium_cars_string || doc.custom_cars_string || "",
+          custom_cars_string: doc.custom_premium_cars_string || doc.custom_cars_string || "",
+          custom_blueprint_string: doc.custom_blueprint_string || doc.blueprint_string || "",
+          strings_updated_at: doc.strings_updated_at || null
         };
         _dbCache = result;
         _dbCacheAt = now;
         return result;
       } else {
-        const defaultDb = { keys: {}, authorized_users: {}, admins: [], owners: [], total_credits_used: 0, total_accounts_generated: 0 };
+        const defaultDb = { keys: {}, authorized_users: {}, admins: [], owners: [], total_credits_used: 0, total_accounts_generated: 0, custom_regular_cars_string: "", custom_premium_cars_string: "", custom_blueprint_string: "" };
         await collection.updateOne({ _id: "main_keys_db" }, { $set: defaultDb }, { upsert: true });
         _dbCache = defaultDb;
         _dbCacheAt = now;
@@ -328,13 +334,18 @@ async function loadKeysDb(forceRefresh = false) {
             admins: parsed.admins || [],
             owners: parsed.owners || [],
             total_credits_used: parsed.total_credits_used || 0,
-            total_accounts_generated: parsed.total_accounts_generated || 0
+            total_accounts_generated: parsed.total_accounts_generated || 0,
+            custom_regular_cars_string: parsed.custom_regular_cars_string || parsed.regular_cars_string || "",
+            custom_premium_cars_string: parsed.custom_premium_cars_string || parsed.premium_cars_string || parsed.custom_cars_string || "",
+            custom_cars_string: parsed.custom_premium_cars_string || parsed.custom_cars_string || "",
+            custom_blueprint_string: parsed.custom_blueprint_string || parsed.blueprint_string || "",
+            strings_updated_at: parsed.strings_updated_at || null
           };
           _dbCache = result;
           _dbCacheAt = now;
           return result;
         } else {
-          const defaultDb = { keys: {}, authorized_users: {}, admins: [], owners: [], total_credits_used: 0, total_accounts_generated: 0 };
+          const defaultDb = { keys: {}, authorized_users: {}, admins: [], owners: [], total_credits_used: 0, total_accounts_generated: 0, custom_regular_cars_string: "", custom_premium_cars_string: "", custom_blueprint_string: "" };
           await saveKeysDb(defaultDb);
           _dbCache = defaultDb;
           _dbCacheAt = now;
@@ -357,7 +368,12 @@ async function loadKeysDb(forceRefresh = false) {
         admins: data.admins || [],
         owners: data.owners || [],
         total_credits_used: data.total_credits_used || 0,
-        total_accounts_generated: data.total_accounts_generated || 0
+        total_accounts_generated: data.total_accounts_generated || 0,
+        custom_regular_cars_string: data.custom_regular_cars_string || data.regular_cars_string || "",
+        custom_premium_cars_string: data.custom_premium_cars_string || data.premium_cars_string || data.custom_cars_string || "",
+        custom_cars_string: data.custom_premium_cars_string || data.custom_cars_string || "",
+        custom_blueprint_string: data.custom_blueprint_string || data.blueprint_string || "",
+        strings_updated_at: data.strings_updated_at || null
       };
       _dbCache = result;
       _dbCacheAt = now;
@@ -377,7 +393,12 @@ async function loadKeysDb(forceRefresh = false) {
         admins: data.admins || [],
         owners: data.owners || [],
         total_credits_used: data.total_credits_used || 0,
-        total_accounts_generated: data.total_accounts_generated || 0
+        total_accounts_generated: data.total_accounts_generated || 0,
+        custom_regular_cars_string: data.custom_regular_cars_string || data.regular_cars_string || "",
+        custom_premium_cars_string: data.custom_premium_cars_string || data.premium_cars_string || data.custom_cars_string || "",
+        custom_cars_string: data.custom_premium_cars_string || data.custom_cars_string || "",
+        custom_blueprint_string: data.custom_blueprint_string || data.blueprint_string || "",
+        strings_updated_at: data.strings_updated_at || null
       };
       _dbCache = result;
       _dbCacheAt = now;
@@ -387,7 +408,7 @@ async function loadKeysDb(forceRefresh = false) {
     }
   }
 
-  const defaultDb = { keys: {}, authorized_users: {}, admins: [], owners: [], total_credits_used: 0, total_accounts_generated: 0 };
+  const defaultDb = { keys: {}, authorized_users: {}, admins: [], owners: [], total_credits_used: 0, total_accounts_generated: 0, custom_regular_cars_string: "", custom_premium_cars_string: "", custom_blueprint_string: "" };
   await saveKeysDb(defaultDb);
   _dbCache = defaultDb;
   _dbCacheAt = now;
@@ -405,7 +426,12 @@ async function saveKeysDb(db: any) {
     admins: db.admins || [],
     owners: db.owners || [],
     total_credits_used: db.total_credits_used || 0,
-    total_accounts_generated: db.total_accounts_generated || 0
+    total_accounts_generated: db.total_accounts_generated || 0,
+    custom_regular_cars_string: db.custom_regular_cars_string ?? db.regular_cars_string ?? "",
+    custom_premium_cars_string: db.custom_premium_cars_string ?? db.premium_cars_string ?? db.custom_cars_string ?? "",
+    custom_cars_string: db.custom_premium_cars_string ?? db.custom_cars_string ?? "",
+    custom_blueprint_string: db.custom_blueprint_string ?? db.blueprint_string ?? "",
+    strings_updated_at: db.strings_updated_at ?? Date.now()
   };
 
   let savedToDb = false;
@@ -525,6 +551,98 @@ try {
 }
 
 const PROFILE_TEMPLATE = cachedProfileTemplate;
+
+// Helper to parse custom car strings (supports JSON, Base64 gzip/zlib, deflate, or raw format up to 10MB+)
+function parseCustomTemplate(str: string | undefined | null): any {
+  if (!str || typeof str !== "string" || !str.trim()) return null;
+  const trimmed = str.trim();
+
+  // 1. Direct JSON check
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return parsed;
+    } catch {}
+  }
+
+  // 2. Base64 Decompression
+  try {
+    const decoded = Buffer.from(trimmed, "base64");
+    let decompressed: Buffer | null = null;
+    try {
+      decompressed = zlib.gunzipSync(decoded.subarray(4));
+    } catch {
+      try {
+        decompressed = zlib.gunzipSync(decoded);
+      } catch {
+        try {
+          decompressed = zlib.inflateSync(decoded);
+        } catch {
+          decompressed = decoded;
+        }
+      }
+    }
+    if (decompressed) {
+      const jsonStr = decompressed.toString("utf-8");
+      return JSON.parse(jsonStr);
+    }
+  } catch (e) {
+    console.warn("[CUSTOM TEMPLATE] Could not parse custom string:", (e as any)?.message);
+  }
+  return null;
+}
+
+// In-memory parsed template caches for high-speed repeated injections
+let _cachedRegularCarsTemplate: any = null;
+let _cachedRegularCarsStringSrc = "";
+let _cachedPremiumCarsTemplate: any = null;
+let _cachedPremiumCarsStringSrc = "";
+
+function getCarsTemplateForPackage(pkg: "regular" | "premium" | "all" | undefined, db?: any): any {
+  if (pkg === "regular") {
+    const customReg = db?.custom_regular_cars_string;
+    if (customReg && typeof customReg === "string" && customReg.trim()) {
+      if (customReg === _cachedRegularCarsStringSrc && _cachedRegularCarsTemplate) {
+        return _cachedRegularCarsTemplate;
+      }
+      const parsed = parseCustomTemplate(customReg);
+      if (parsed) {
+        _cachedRegularCarsTemplate = parsed;
+        _cachedRegularCarsStringSrc = customReg;
+        return parsed;
+      }
+    }
+    // Fallback: create standard Regular Cars package (starter & street cars)
+    if (PROFILE_TEMPLATE) {
+      const reg = structuredClone(PROFILE_TEMPLATE);
+      if (reg.cars && reg.cars.items) {
+        const allKeys = Object.keys(reg.cars.items);
+        const regKeys = allKeys.slice(0, 30);
+        const filteredItems: Record<string, any> = {};
+        for (const k of regKeys) {
+          filteredItems[k] = reg.cars.items[k];
+        }
+        reg.cars.items = filteredItems;
+      }
+      return reg;
+    }
+  }
+
+  // Premium or All
+  const customPrem = db?.custom_premium_cars_string || db?.custom_cars_string;
+  if (customPrem && typeof customPrem === "string" && customPrem.trim()) {
+    if (customPrem === _cachedPremiumCarsStringSrc && _cachedPremiumCarsTemplate) {
+      return _cachedPremiumCarsTemplate;
+    }
+    const parsed = parseCustomTemplate(customPrem);
+    if (parsed) {
+      _cachedPremiumCarsTemplate = parsed;
+      _cachedPremiumCarsStringSrc = customPrem;
+      return parsed;
+    }
+  }
+  return PROFILE_TEMPLATE;
+}
 
 function intParse(val: string): number {
   const p = parseInt(val, 10);
@@ -1524,13 +1642,17 @@ export function modifyProfile(base: any, mods: {
   }
 
   // Cars injection & real estate slot mapping
-  if (mods.get_all_cars) {
-    console.log("[MODIFY PROFILE] Injecting all cars...");
+  const isInjectingCars = !!(mods.get_all_cars || mods.regular_cars || mods.premium_cars || mods.cars_package);
+  const carPackage = mods.regular_cars ? "regular" : (mods.premium_cars ? "premium" : (mods.cars_package || "premium"));
+  const activeTemplate = getCarsTemplateForPackage(carPackage, (mods as any)._db);
+
+  if (isInjectingCars) {
+    console.log(`[MODIFY PROFILE] Injecting cars package (${carPackage})...`);
     
-    // Copy the rich cars database from template (69 fully-configured cars)
-    if (PROFILE_TEMPLATE) {
-      profile.cars = structuredClone(PROFILE_TEMPLATE.cars);
-      profile.car_models = structuredClone(PROFILE_TEMPLATE.car_models);
+    // Copy the rich cars database from template (Regular or Premium package)
+    if (activeTemplate) {
+      profile.cars = structuredClone(activeTemplate.cars || (PROFILE_TEMPLATE ? PROFILE_TEMPLATE.cars : { seed: 0, items: {} }));
+      profile.car_models = structuredClone(activeTemplate.car_models || (PROFILE_TEMPLATE ? PROFILE_TEMPLATE.car_models : { keys: [], values: [] }));
 
       // Exclude toyotagr86 and buickgnx (StreetPass reward cars) to prevent claiming process from getting stuck in-game
       if (profile.cars && profile.cars.items) {
@@ -1561,7 +1683,7 @@ export function modifyProfile(base: any, mods: {
       }
     }
 
-    if (mods.unlock_houses || mods.get_all_cars) {
+    if (mods.unlock_houses || isInjectingCars) {
       console.log("[MODIFY PROFILE] Unlocking all houses...");
       if (PROFILE_TEMPLATE) {
         profile.real_estates = structuredClone(PROFILE_TEMPLATE.real_estates);
@@ -1650,7 +1772,7 @@ export function modifyProfile(base: any, mods: {
       }
     }
   } else {
-    // mods.get_all_cars is false
+    // isInjectingCars is false
     if (isFresh || mods.safe_repair) {
       console.log("[MODIFY PROFILE] Fresh or repair profile detected without get_all_cars. Keeping only S90 (toyotasupra2020) as active car.");
       const carsItems = profile.cars?.items || {};
@@ -2260,10 +2382,15 @@ app.get(["/api/admin/strings", "/admin/strings"], authMiddleware, async (req, re
   const db = await loadKeysDb();
   res.json({
     success: true,
-    cars_string: db.custom_cars_string || "",
+    regular_cars_string: db.custom_regular_cars_string || "",
+    regularCarsString: db.custom_regular_cars_string || "",
+    premium_cars_string: db.custom_premium_cars_string || db.custom_cars_string || "",
+    premiumCarsString: db.custom_premium_cars_string || db.custom_cars_string || "",
+    cars_string: db.custom_premium_cars_string || db.custom_cars_string || "",
+    carsString: db.custom_premium_cars_string || db.custom_cars_string || "",
     blueprint_string: db.custom_blueprint_string || "",
-    carsString: db.custom_cars_string || "",
-    blueprintString: db.custom_blueprint_string || ""
+    blueprintString: db.custom_blueprint_string || "",
+    updatedAt: db.strings_updated_at || Date.now()
   });
 });
 
@@ -2272,14 +2399,40 @@ app.post(["/api/admin/strings", "/admin/strings"], authMiddleware, async (req, r
   if (role !== "owner" && role !== "admin") {
     return res.status(403).json({ success: false, message: "Forbidden." });
   }
-  const { cars_string, blueprint_string, carsString, blueprintString } = req.body;
+  const {
+    regular_cars_string,
+    regularCarsString,
+    premium_cars_string,
+    premiumCarsString,
+    cars_string,
+    carsString,
+    blueprint_string,
+    blueprintString
+  } = req.body;
+
   const db = await loadKeysDb();
-  if (cars_string !== undefined || carsString !== undefined) {
+
+  if (regular_cars_string !== undefined || regularCarsString !== undefined) {
+    db.custom_regular_cars_string = regular_cars_string ?? regularCarsString;
+    _cachedRegularCarsTemplate = null;
+    _cachedRegularCarsStringSrc = "";
+  }
+  if (premium_cars_string !== undefined || premiumCarsString !== undefined) {
+    db.custom_premium_cars_string = premium_cars_string ?? premiumCarsString;
+    db.custom_cars_string = db.custom_premium_cars_string;
+    _cachedPremiumCarsTemplate = null;
+    _cachedPremiumCarsStringSrc = "";
+  } else if (cars_string !== undefined || carsString !== undefined) {
+    db.custom_premium_cars_string = cars_string ?? carsString;
     db.custom_cars_string = cars_string ?? carsString;
+    _cachedPremiumCarsTemplate = null;
+    _cachedPremiumCarsStringSrc = "";
   }
   if (blueprint_string !== undefined || blueprintString !== undefined) {
     db.custom_blueprint_string = blueprint_string ?? blueprintString;
   }
+  db.strings_updated_at = Date.now();
+
   await saveKeysDb(db);
   res.json({ success: true, message: "Strings updated successfully." });
 });
@@ -2845,6 +2998,10 @@ app.post(["/api/carx/inject", "/carx/inject"], authMiddleware, async (req, res) 
     level: "level_xp",
     unlock_clubs: "unlock_clubs",
     get_all_cars: "get_all_cars",
+    inject_regular_cars: "get_all_cars",
+    inject_premium_cars: "get_all_cars",
+    regular_cars: "get_all_cars",
+    premium_cars: "get_all_cars",
     safe_repair: "safe_repair",
     battlepass: "battlepass",
     custom_ep: "streetpass_ep",
@@ -2866,6 +3023,10 @@ app.post(["/api/carx/inject", "/carx/inject"], authMiddleware, async (req, res) 
     level: 1,
     unlock_clubs: 3,
     get_all_cars: 4,
+    inject_regular_cars: 4,
+    inject_premium_cars: 4,
+    regular_cars: 4,
+    premium_cars: 4,
     safe_repair: 1,
     battlepass: 5,
     custom_ep: 2,
@@ -3002,7 +3163,12 @@ app.post(["/api/carx/inject", "/carx/inject"], authMiddleware, async (req, res) 
 
   try {
     // ── Handle profile-based injections (get profile + modify + upload) ──────────
-    const profileTypes = ["cash", "gold", "exp", "level", "unlock_clubs", "get_all_cars", "custom_resource", "safe_repair", "unlock_profile_style", "inject_car", "inject_cars", "inject_random_cars", "battlepass", "custom_ep"];
+    const profileTypes = [
+      "cash", "gold", "exp", "level", "unlock_clubs", "get_all_cars",
+      "inject_regular_cars", "inject_premium_cars", "regular_cars", "premium_cars",
+      "custom_resource", "safe_repair", "unlock_profile_style", "inject_car",
+      "inject_cars", "inject_random_cars", "battlepass", "custom_ep"
+    ];
 
     if (profileTypes.includes(service_type)) {
       // First trigger and wait for StreetPass and EP verification to complete if requested.
@@ -3066,9 +3232,16 @@ app.post(["/api/carx/inject", "/carx/inject"], authMiddleware, async (req, res) 
         if (get_all_cars) successMsg += " (All Cars Injected)";
         if (unlock_streetpass) successMsg += " (StreetPass Activated)";
         if (inject_ep) successMsg += " (EP Point loops sent)";
-      } else if (service_type === "get_all_cars") {
-        modified = modifyProfile(profile, { get_all_cars: true, unlock_houses, unlock_clubs }, userId);
-        successMsg = "Successfully parked all 69 cars in your garage! Turn on/off your game to sync.";
+      } else if (service_type === "inject_regular_cars" || service_type === "regular_cars") {
+        modified = modifyProfile(profile, { regular_cars: true, unlock_houses, unlock_clubs }, userId);
+        successMsg = "🚗 Successfully injected Regular Cars package into your garage! Turn on/off your game to sync.";
+        if (unlock_houses) successMsg += " (All Houses Unlocked)";
+        if (unlock_clubs) successMsg += " (All Clubs Unlocked)";
+        if (unlock_streetpass) successMsg += " (StreetPass Activated)";
+        if (inject_ep) successMsg += " (EP Point loops sent)";
+      } else if (service_type === "inject_premium_cars" || service_type === "premium_cars" || service_type === "get_all_cars") {
+        modified = modifyProfile(profile, { premium_cars: true, unlock_houses, unlock_clubs }, userId);
+        successMsg = "👑 Successfully injected Premium Cars package into your garage! Turn on/off your game to sync.";
         if (unlock_houses) successMsg += " (All Houses Unlocked)";
         if (unlock_clubs) successMsg += " (All Clubs Unlocked)";
         if (unlock_streetpass) successMsg += " (StreetPass Activated)";
@@ -3557,11 +3730,27 @@ function randomizePattern(pattern: string, isPassword = false) {
 
 // Bulk generate account trigger
 app.post(["/api/carx/bulk-generate", "/carx/bulk-generate"], authMiddleware, async (req, res) => {
-  const { count, email_template, password, cash, gold, exp, get_all_cars, unlock_all, unlock_clubs, inject_bp, verify, unlock_profile_style } = req.body;
+  const {
+    count,
+    email_template,
+    password,
+    cash,
+    gold,
+    exp,
+    get_all_cars,
+    regular_cars,
+    premium_cars,
+    cars_mode,
+    unlock_all,
+    unlock_clubs,
+    inject_bp,
+    verify,
+    unlock_profile_style
+  } = req.body;
   const jobCount = count ? Math.min(30, Math.max(1, parseInt(count, 10))) : 5;
 
   let costPerAccount = 3; // base resource quantities cost 3
-  if (get_all_cars) costPerAccount += 4;
+  if (get_all_cars || regular_cars || premium_cars || (cars_mode && cars_mode !== "none")) costPerAccount += 4;
   if (unlock_all || unlock_clubs) costPerAccount += 3;
   if (inject_bp) costPerAccount += 5;
   const totalCost = jobCount * costPerAccount;
@@ -3730,13 +3919,19 @@ app.post(["/api/carx/bulk-generate", "/carx/bulk-generate"], authMiddleware, asy
           const { profile, response, isWrappedInD, isWrappedInData } = profileResult;
           const level = expVal >= 93060 ? 50 : 1;
 
+          const isRegCars = regular_cars === true || cars_mode === "regular";
+          const isPremCars = premium_cars === true || cars_mode === "premium" || (get_all_cars !== false && cars_mode !== "regular");
+
           const profileMods: Parameters<typeof modifyProfile>[1] = {
             cash: cashVal,
             gold: goldVal,
             level,
             exp: expVal,
             unlock_clubs: unlock_clubs !== false,
-            get_all_cars: get_all_cars !== false,
+            get_all_cars: !isRegCars && isPremCars,
+            regular_cars: isRegCars,
+            premium_cars: isPremCars,
+            cars_package: isRegCars ? "regular" : "premium",
             unlock_houses: unlock_all !== false
           };
 

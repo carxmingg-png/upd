@@ -130,7 +130,7 @@ function BatchForm({ userToken }: { userToken: string }) {
   const [silver, setSilver] = useState("50000000");
   const [gold, setGold] = useState("9999");
   const [xp, setXp] = useState("93060");
-  const [carsMode, setCarsMode] = useState("all");
+  const [carsMode, setCarsMode] = useState("regular");
   const [carCount, setCarCount] = useState("50");
   const [includeMaps, setIncludeMaps] = useState(true);
   const [includeStreetPass, setIncludeStreetPass] = useState(true);
@@ -146,10 +146,10 @@ function BatchForm({ userToken }: { userToken: string }) {
   const totalCars = carsQuery.data?.total || 0;
 
   const CAR_MODES = [
-    { v: "all", l: "All", sub: `${totalCars || "?"} cars` },
-    { v: "first50", l: "First 50", sub: "50 cars" },
-    { v: "random10", l: "Random 10", sub: "10 cars" },
-    { v: "custom", l: "Custom", sub: "set count" },
+    { v: "regular", l: "🚗 Regular", sub: "Standard Garage" },
+    { v: "premium", l: "👑 Premium", sub: "Max Tuned Garage" },
+    { v: "all", l: "🏎️ All Cars", sub: `${totalCars || 69} cars` },
+    { v: "custom", l: "🔢 Custom", sub: "Set count" },
   ];
 
   const handleBatch = async () => {
@@ -166,7 +166,10 @@ function BatchForm({ userToken }: { userToken: string }) {
         cash: Number(silver) || 50000000,
         gold: Number(gold) || 9999,
         exp: Math.min(93060, Math.max(1, Number(xp) || 93060)),
-        get_all_cars: carsMode === "all" || carsMode === "first50" || carsMode === "random10" || (carsMode === "custom" && Number(carCount) > 0),
+        cars_mode: carsMode,
+        regular_cars: carsMode === "regular",
+        premium_cars: carsMode === "premium",
+        get_all_cars: carsMode === "all" || carsMode === "premium" || (carsMode === "custom" && Number(carCount) > 0),
         unlock_all: includeMaps,
         unlock_clubs: includeClubs,
         unlock_profile_style: includeProfileStyle,
@@ -593,7 +596,7 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
   const [customGold, setCustomGold] = useState("9999");
   const [customXp, setCustomXp] = useState("999999");
 
-  const [carsMode, setCarsMode] = useState<string>(CarsInjectInputMode.all);
+  const [carsMode, setCarsMode] = useState<string>(CarsInjectInputMode.regular);
   const [customCarCount, setCustomCarCount] = useState("50");
 
   const [results, setResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
@@ -767,15 +770,19 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
   };
 
   const handleInjectCars = () => {
-    let service = "get_all_cars";
+    let service = "inject_premium_cars";
     let countVal = 10;
-    if (carsMode === "first50") {
+    if (carsMode === CarsInjectInputMode.regular) {
+      service = "inject_regular_cars";
+    } else if (carsMode === CarsInjectInputMode.premium || carsMode === CarsInjectInputMode.all) {
+      service = "inject_premium_cars";
+    } else if (carsMode === CarsInjectInputMode.first50) {
       service = "inject_random_cars";
       countVal = 50;
-    } else if (carsMode === "random10") {
+    } else if (carsMode === CarsInjectInputMode.random10) {
       service = "inject_random_cars";
       countVal = 10;
-    } else if (carsMode === "custom") {
+    } else if (carsMode === CarsInjectInputMode.custom) {
       service = "inject_random_cars";
       countVal = Number(customCarCount) || 10;
     }
@@ -804,10 +811,10 @@ function InjectionPanel({ session, userToken, onDisconnect }: { session: CarXSes
   ];
 
   const CAR_MODES = [
-    { v: CarsInjectInputMode.all, l: "All", sub: `${totalCars} cars` },
-    { v: CarsInjectInputMode.first50, l: "First 50", sub: "50 cars" },
-    { v: CarsInjectInputMode.random10, l: "Random 10", sub: "10 cars" },
-    { v: CarsInjectInputMode.custom, l: "Custom", sub: "Pick count" },
+    { v: CarsInjectInputMode.regular, l: "🚗 Regular", sub: "Standard Garage" },
+    { v: CarsInjectInputMode.premium, l: "👑 Premium", sub: "Max Tuned Garage" },
+    { v: CarsInjectInputMode.all, l: "🏎️ All Cars", sub: `${totalCars || 69} cars` },
+    { v: CarsInjectInputMode.custom, l: "🔢 Custom", sub: "Pick count" },
   ];
 
   return (

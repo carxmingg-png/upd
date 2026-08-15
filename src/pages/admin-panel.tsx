@@ -24,6 +24,7 @@ import {
 const TABS = [
   { id: "keys", label: "Keys", icon: Key },
   { id: "injector", label: "Account Injector & Batch", icon: Zap },
+  { id: "strings", label: "Car Strings Config", icon: FileText },
   { id: "cars", label: "Cars", icon: Car },
 ];
 
@@ -307,24 +308,174 @@ function KeysTab({ adminToken }: { adminToken: string }) {
   );
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+interface StringEditorCardProps {
+  title: string;
+  subtitle: string;
+  badge: string;
+  badgeColor: string;
+  icon: string;
+  value: string;
+  originalValue: string;
+  onChange: (val: string) => void;
+  onSave: () => void;
+  isSaving: boolean;
+  isDirty: boolean;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  maxMB?: number;
+}
+
+function StringEditorCard({
+  title,
+  subtitle,
+  badge,
+  badgeColor,
+  icon,
+  value,
+  originalValue,
+  onChange,
+  onSave,
+  isSaving,
+  isDirty,
+  fileInputRef,
+  onFileSelect,
+  placeholder,
+  maxMB = 10
+}: StringEditorCardProps) {
+  const byteLength = new Blob([value]).size;
+  const sizeMB = byteLength / (1024 * 1024);
+  const percentUsed = Math.min(100, (sizeMB / maxMB) * 100);
+  const isOverLimit = sizeMB > maxMB;
+
+  return (
+    <div className={`bg-zinc-900/70 border rounded-2xl p-5 space-y-4 transition-all ${
+      isDirty ? "border-amber-500/50 shadow-[0_0_20px_rgba(245,158,11,0.08)]" : "border-zinc-800/80"
+    }`}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="text-2xl p-2 rounded-xl bg-zinc-800/80 border border-zinc-700/60">{icon}</span>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-bold text-white tracking-wide">{title}</h3>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border ${badgeColor}`}>
+                {badge}
+              </span>
+              {isDirty && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 font-bold animate-pulse">
+                  Unsaved Changes
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-zinc-400 mt-0.5">{subtitle}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-end sm:self-center">
+          <input
+            ref={fileInputRef as any}
+            type="file"
+            accept=".txt,.json,.dat"
+            className="hidden"
+            onChange={onFileSelect}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 hover:text-white rounded-xl text-xs font-semibold transition-all"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Upload File
+          </button>
+          <CopyButton text={value} label="Copy String" />
+          {value && (
+            <button
+              onClick={() => onChange("")}
+              className="px-2.5 py-1.5 bg-zinc-800/60 hover:bg-red-950/40 text-zinc-400 hover:text-red-400 border border-zinc-700/60 hover:border-red-500/40 rounded-xl text-xs transition-all"
+              title="Clear string"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            onClick={onSave}
+            disabled={isSaving || !value}
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-black rounded-xl text-xs transition-all disabled:opacity-40 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
+          >
+            {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            Save
+          </button>
+        </div>
+      </div>
+
+      {/* Capacity & Size Meter */}
+      <div className="bg-zinc-950/60 border border-zinc-800/60 rounded-xl p-3 space-y-2">
+        <div className="flex items-center justify-between text-xs font-mono">
+          <span className="text-zinc-400 flex items-center gap-1.5">
+            <span>📊 Payload Size:</span>
+            <span className={`font-bold ${isOverLimit ? "text-red-400" : sizeMB > 8 ? "text-amber-400" : "text-emerald-400"}`}>
+              {formatBytes(byteLength)}
+            </span>
+            <span className="text-zinc-600">/ {maxMB} MB Max</span>
+          </span>
+          <span className="text-zinc-500">
+            {value ? `${value.length.toLocaleString()} characters` : "Empty string"}
+          </span>
+        </div>
+
+        <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+          <div
+            className={`h-full transition-all duration-300 ${
+              isOverLimit ? "bg-red-500" : sizeMB > 8 ? "bg-amber-500" : "bg-emerald-500"
+            }`}
+            style={{ width: `${percentUsed}%` }}
+          />
+        </div>
+      </div>
+
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder || `Paste ${title} here or upload a file (up to ${maxMB} MB)...`}
+        rows={6}
+        className="w-full bg-zinc-950/80 border border-zinc-800 rounded-xl p-3 text-xs font-mono text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50 resize-y transition-all leading-relaxed"
+      />
+    </div>
+  );
+}
+
 function StringsTab({ adminToken }: { adminToken: string }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const carsFileRef = useRef<HTMLInputElement>(null);
+
+  const regFileRef = useRef<HTMLInputElement>(null);
+  const premFileRef = useRef<HTMLInputElement>(null);
   const bpFileRef = useRef<HTMLInputElement>(null);
 
-  const [carsValue, setCarsValue] = useState("");
+  const [regularValue, setRegularValue] = useState("");
+  const [premiumValue, setPremiumValue] = useState("");
   const [bpValue, setBpValue] = useState("");
   const [initialized, setInitialized] = useState(false);
-  const [carsDirty, setCarsDirty] = useState(false);
+
+  const [regularDirty, setRegularDirty] = useState(false);
+  const [premiumDirty, setPremiumDirty] = useState(false);
   const [bpDirty, setBpDirty] = useState(false);
 
   const stringsQuery = useGetStrings({ adminToken }, { query: { queryKey: getGetStringsQueryKey({ adminToken }) } });
 
   useEffect(() => {
     if (stringsQuery.data && !initialized) {
-      setCarsValue(stringsQuery.data.carsString || "");
-      setBpValue(stringsQuery.data.blueprintString || "");
+      const d = stringsQuery.data;
+      setRegularValue(d.regularCarsString || d.regular_cars_string || "");
+      setPremiumValue(d.premiumCarsString || d.premium_cars_string || d.carsString || d.cars_string || "");
+      setBpValue(d.blueprintString || d.blueprint_string || "");
       setInitialized(true);
     }
   }, [stringsQuery.data, initialized]);
@@ -332,149 +483,180 @@ function StringsTab({ adminToken }: { adminToken: string }) {
   const updateStrings = useUpdateStrings({
     mutation: {
       onSuccess: (_data, variables) => {
-        toast({ title: "✅ Saved", description: "Strings updated on server" });
+        toast({ title: "✅ Saved Successfully", description: "Car strings updated on server database" });
         const v = variables.data;
-        if (v.carsString !== null && v.carsString !== undefined) setCarsDirty(false);
-        if (v.blueprintString !== null && v.blueprintString !== undefined) setBpDirty(false);
+        if (v.regularCarsString !== undefined && v.regularCarsString !== null) setRegularDirty(false);
+        if (v.premiumCarsString !== undefined && v.premiumCarsString !== null) setPremiumDirty(false);
+        if (v.blueprintString !== undefined && v.blueprintString !== null) setBpDirty(false);
         qc.invalidateQueries({ queryKey: getGetStringsQueryKey({ adminToken }) });
         qc.invalidateQueries({ queryKey: getGetCarsQueryKey() });
       },
       onError: (err) => {
-        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        const msg = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.message
+          || (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
         toast({ title: "Error", description: msg || "Failed to update strings", variant: "destructive" });
       },
     },
   });
 
-  const handleFileRead = (file: File, setter: (v: string) => void, dirtyFn: (v: boolean) => void) => {
+  const handleFileRead = (file: File, setter: (v: string) => void, dirtyFn: (v: boolean) => void, label: string) => {
+    if (file.size > 20 * 1024 * 1024) {
+      toast({ title: "File too large", description: `File size (${formatBytes(file.size)}) exceeds 20MB limit.`, variant: "destructive" });
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => {
       if (e.target?.result) {
         const content = String(e.target.result).trim();
         setter(content);
         dirtyFn(true);
-        toast({ title: "📂 File loaded", description: `${content.length.toLocaleString()} characters ready — click Save to apply` });
+        toast({
+          title: `📂 ${label} Loaded`,
+          description: `${content.length.toLocaleString()} characters (${formatBytes(file.size)}) ready — click Save to apply.`
+        });
       }
     };
     reader.readAsText(file);
   };
 
-  const handleSave = (which: "cars" | "blueprint" | "both") => {
-    const carsString = which !== "blueprint" ? carsValue : null;
-    const blueprintString = which !== "cars" ? bpValue : null;
-    updateStrings.mutate({ data: { adminToken, carsString, blueprintString } });
+  const handleSaveIndividual = (target: "regular" | "premium" | "blueprint") => {
+    const payload: any = { adminToken };
+    if (target === "regular") payload.regularCarsString = regularValue;
+    if (target === "premium") payload.premiumCarsString = premiumValue;
+    if (target === "blueprint") payload.blueprintString = bpValue;
+    updateStrings.mutate({ data: payload });
+  };
+
+  const handleSaveAll = () => {
+    updateStrings.mutate({
+      data: {
+        adminToken,
+        regularCarsString: regularValue,
+        premiumCarsString: premiumValue,
+        blueprintString: bpValue,
+      }
+    });
   };
 
   const strings = stringsQuery.data;
+  const anyDirty = regularDirty || premiumDirty || bpDirty;
 
   return (
     <div className="space-y-6">
-      {stringsQuery.isLoading && <div className="text-zinc-500 text-sm text-center py-8">Loading strings...</div>}
-
-      {/* Cars String */}
-      <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-xl p-4 space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
+      {/* Top Banner with Stats & Save All */}
+      <div className="bg-gradient-to-r from-zinc-900/80 via-zinc-900/60 to-zinc-900/80 border border-zinc-800/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-xl">
+            ⚡
+          </div>
           <div>
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              COMPRESSED_CARS_STRING
-              {carsDirty && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold">Unsaved</span>}
-            </h3>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              {carsValue ? `${carsValue.length.toLocaleString()} characters` : "Not set"}
-              {strings?.carsString && carsValue !== strings.carsString && (
-                <span className="ml-2 text-amber-400">(changed from {strings.carsString.length.toLocaleString()})</span>
-              )}
+            <h2 className="text-sm font-black text-white flex items-center gap-2">
+              Replaceable Car Strings Engine
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                10 MB Supported
+              </span>
+            </h2>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Paste or upload custom regular and premium profile car strings. Server decodes gzip base64 & JSON payloads.
             </p>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => carsFileRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs text-zinc-300 transition-all"
-            >
-              <Upload className="w-3.5 h-3.5" />Upload File
-            </button>
-            <input
-              ref={carsFileRef}
-              type="file"
-              accept=".txt"
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files?.[0]) handleFileRead(e.target.files[0], setCarsValue, setCarsDirty);
-                e.target.value = "";
-              }}
-            />
-            <button
-              onClick={() => handleSave("cars")}
-              disabled={updateStrings.isPending || !carsValue}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black rounded-lg text-xs font-bold transition-all disabled:opacity-50"
-            >
-              {updateStrings.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : null}
-              Save
-            </button>
-          </div>
         </div>
-        <textarea
-          value={carsValue}
-          onChange={(e) => { setCarsValue(e.target.value); setCarsDirty(true); }}
-          placeholder="Paste COMPRESSED_CARS_STRING here or upload a .txt file..."
-          rows={5}
-          className="w-full bg-zinc-800/60 border border-zinc-700/40 rounded-lg px-3 py-2 text-xs font-mono text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/40 resize-y"
-        />
+
+        <div className="flex items-center gap-2 self-end sm:self-center">
+          <button
+            onClick={() => stringsQuery.refetch()}
+            disabled={stringsQuery.isFetching}
+            className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-xl text-xs transition-all disabled:opacity-50"
+            title="Refresh from server"
+          >
+            <RefreshCw className={`w-4 h-4 ${stringsQuery.isFetching ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            onClick={handleSaveAll}
+            disabled={updateStrings.isPending}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-black font-black rounded-xl text-xs uppercase tracking-wider transition-all disabled:opacity-50 shadow-[0_0_20px_rgba(245,158,11,0.25)]"
+          >
+            {updateStrings.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            Save All Strings
+          </button>
+        </div>
       </div>
 
-      {/* Blueprint String */}
-      <div className="bg-zinc-900/60 border border-zinc-800/60 rounded-xl p-4 space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              COMPRESSED_STRING (Blueprint)
-              {bpDirty && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold">Unsaved</span>}
-            </h3>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              {bpValue ? `${bpValue.length.toLocaleString()} characters` : "Not set"}
-              {strings?.blueprintString && bpValue !== strings.blueprintString && (
-                <span className="ml-2 text-amber-400">(changed from {strings.blueprintString.length.toLocaleString()})</span>
-              )}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => bpFileRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs text-zinc-300 transition-all"
-            >
-              <Upload className="w-3.5 h-3.5" />Upload File
-            </button>
-            <input
-              ref={bpFileRef}
-              type="file"
-              accept=".txt"
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files?.[0]) handleFileRead(e.target.files[0], setBpValue, setBpDirty);
-                e.target.value = "";
-              }}
-            />
-            <button
-              onClick={() => handleSave("blueprint")}
-              disabled={updateStrings.isPending || !bpValue}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black rounded-lg text-xs font-bold transition-all disabled:opacity-50"
-            >
-              {updateStrings.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : null}
-              Save
-            </button>
-          </div>
-        </div>
-        <textarea
-          value={bpValue}
-          onChange={(e) => { setBpValue(e.target.value); setBpDirty(true); }}
-          placeholder="Paste COMPRESSED_STRING here or upload a .txt file..."
-          rows={5}
-          className="w-full bg-zinc-800/60 border border-zinc-700/40 rounded-lg px-3 py-2 text-xs font-mono text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/40 resize-y"
-        />
-      </div>
+      {stringsQuery.isLoading && (
+        <div className="text-zinc-500 text-sm text-center py-8 animate-pulse">Loading car strings from server database...</div>
+      )}
+
+      {/* 1. Regular Cars String Card */}
+      <StringEditorCard
+        title="REGULAR CARS STRING"
+        subtitle="Template for Standard / Regular Cars Package injection"
+        badge="Regular Package"
+        badgeColor="bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
+        icon="🚗"
+        value={regularValue}
+        originalValue={strings?.regularCarsString || ""}
+        onChange={(v) => { setRegularValue(v); setRegularDirty(true); }}
+        onSave={() => handleSaveIndividual("regular")}
+        isSaving={updateStrings.isPending}
+        isDirty={regularDirty}
+        fileInputRef={regFileRef}
+        onFileSelect={(e) => {
+          if (e.target.files?.[0]) handleFileRead(e.target.files[0], setRegularValue, setRegularDirty, "Regular Cars String");
+          e.target.value = "";
+        }}
+        placeholder="Paste REGULAR_CARS_STRING (Base64 compressed or JSON) here or upload .txt / .json file..."
+        maxMB={10}
+      />
+
+      {/* 2. Premium Cars String Card */}
+      <StringEditorCard
+        title="PREMIUM CARS STRING"
+        subtitle="Template for Full Luxury / Max Tuned Premium Cars Package injection"
+        badge="Premium Package"
+        badgeColor="bg-amber-500/10 text-amber-400 border-amber-500/30"
+        icon="👑"
+        value={premiumValue}
+        originalValue={strings?.premiumCarsString || strings?.carsString || ""}
+        onChange={(v) => { setPremiumValue(v); setPremiumDirty(true); }}
+        onSave={() => handleSaveIndividual("premium")}
+        isSaving={updateStrings.isPending}
+        isDirty={premiumDirty}
+        fileInputRef={premFileRef}
+        onFileSelect={(e) => {
+          if (e.target.files?.[0]) handleFileRead(e.target.files[0], setPremiumValue, setPremiumDirty, "Premium Cars String");
+          e.target.value = "";
+        }}
+        placeholder="Paste PREMIUM_CARS_STRING (Base64 compressed or JSON) here or upload .txt / .json file..."
+        maxMB={10}
+      />
+
+      {/* 3. Blueprint String Card */}
+      <StringEditorCard
+        title="COMPRESSED_STRING (Blueprint)"
+        subtitle="Blueprint template string for full account structure"
+        badge="Blueprint"
+        badgeColor="bg-purple-500/10 text-purple-400 border-purple-500/30"
+        icon="📄"
+        value={bpValue}
+        originalValue={strings?.blueprintString || ""}
+        onChange={(v) => { setBpValue(v); setBpDirty(true); }}
+        onSave={() => handleSaveIndividual("blueprint")}
+        isSaving={updateStrings.isPending}
+        isDirty={bpDirty}
+        fileInputRef={bpFileRef}
+        onFileSelect={(e) => {
+          if (e.target.files?.[0]) handleFileRead(e.target.files[0], setBpValue, setBpDirty, "Blueprint String");
+          e.target.value = "";
+        }}
+        placeholder="Paste COMPRESSED_STRING (Blueprint) here..."
+        maxMB={10}
+      />
 
       {strings?.updatedAt && (
-        <p className="text-xs text-zinc-600 text-right">Server last updated: {new Date(strings.updatedAt).toLocaleString()}</p>
+        <div className="flex items-center justify-between text-xs text-zinc-500 font-mono px-1">
+          <span>🛡️ Server sync active</span>
+          <span>Last modified: {new Date(strings.updatedAt).toLocaleString()}</span>
+        </div>
       )}
     </div>
   );
@@ -482,45 +664,92 @@ function StringsTab({ adminToken }: { adminToken: string }) {
 
 function CarsTab({ adminToken }: { adminToken: string }) {
   const [search, setSearch] = useState("");
+  const [filterMode, setFilterMode] = useState<"all" | "regular" | "premium">("all");
   const carsQuery = useGetCars({ userToken: adminToken }, { query: { queryKey: getGetCarsQueryKey({ userToken: adminToken }) } });
   const cars = carsQuery.data?.cars || [];
-  const filtered = cars.filter((c) => !search || c.descId.toLowerCase().includes(search.toLowerCase()));
+
+  const filtered = cars.filter((c) => {
+    const matchesSearch = !search || c.descId.toLowerCase().includes(search.toLowerCase());
+    return matchesSearch;
+  });
+
+  const displayedCars = filterMode === "regular"
+    ? filtered.slice(0, 30)
+    : filtered;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search car ID..."
-            className="w-full pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50"
-          />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-xl">
+          <button
+            onClick={() => setFilterMode("all")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              filterMode === "all" ? "bg-amber-500 text-black font-bold" : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            All Cars ({cars.length})
+          </button>
+          <button
+            onClick={() => setFilterMode("regular")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              filterMode === "regular" ? "bg-cyan-500 text-black font-bold" : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            🚗 Regular Package (30)
+          </button>
+          <button
+            onClick={() => setFilterMode("premium")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              filterMode === "premium" ? "bg-amber-400 text-black font-bold" : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            👑 Premium Package ({cars.length})
+          </button>
         </div>
-        <button
-          onClick={() => carsQuery.refetch()}
-          className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-all"
-        >
-          <RefreshCw className={`w-4 h-4 ${carsQuery.isFetching ? "animate-spin" : ""}`} />
-        </button>
-        <span className="text-xs text-zinc-500 whitespace-nowrap">{cars.length} cars</span>
+
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 sm:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search car model..."
+              className="w-full pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/50"
+            />
+          </div>
+          <button
+            onClick={() => carsQuery.refetch()}
+            className="p-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-all"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${carsQuery.isFetching ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
-      {carsQuery.isLoading && <div className="text-center py-8 text-zinc-500 text-sm">Loading cars...</div>}
+      {carsQuery.isLoading && <div className="text-center py-8 text-zinc-500 text-sm">Loading cars catalog...</div>}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[500px] overflow-y-auto pr-1">
-        {filtered.slice(0, 200).map((car) => (
-          <div key={car.id} className="bg-zinc-900/60 border border-zinc-800/40 rounded-xl px-3 py-2.5 flex items-center gap-3">
-            <span className="text-2xl">🚗</span>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[520px] overflow-y-auto pr-1">
+        {displayedCars.slice(0, 150).map((car, idx) => (
+          <div key={car.id || idx} className="bg-zinc-900/60 border border-zinc-800/60 hover:border-zinc-700 rounded-xl p-3 flex items-center gap-3 transition-all hover:bg-zinc-900/90">
+            <span className="text-2xl">{idx < 30 ? "🚗" : "🏎️"}</span>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-mono text-white truncate">{car.descId}</p>
-              <p className="text-xs text-zinc-600">ID: {car.id}</p>
+              <p className="text-xs font-bold font-mono text-white truncate">{car.descId}</p>
+              <div className="flex items-center justify-between mt-0.5">
+                <span className="text-[10px] text-zinc-500 font-mono">ID: {car.id}</span>
+                <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
+                  idx < 30 ? "bg-cyan-500/10 text-cyan-400" : "bg-amber-500/10 text-amber-400"
+                }`}>
+                  {idx < 30 ? "Regular" : "Premium"}
+                </span>
+              </div>
             </div>
           </div>
         ))}
-        {filtered.length > 200 && (
-          <div className="col-span-2 text-center py-2 text-xs text-zinc-600">Showing first 200 of {filtered.length}</div>
+        {displayedCars.length > 150 && (
+          <div className="col-span-full text-center py-2 text-xs text-zinc-500">
+            Showing first 150 of {displayedCars.length} models
+          </div>
         )}
       </div>
     </div>
@@ -563,12 +792,12 @@ export default function AdminPanel() {
               key={id}
               onClick={() => setTab(id)}
               data-testid={`tab-${id}`}
-              className={`flex items-center gap-2 flex-1 justify-center px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                tab === id ? "bg-amber-500 text-black shadow-lg" : "text-zinc-500 hover:text-zinc-300"
+              className={`flex items-center gap-2 flex-1 justify-center px-4 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                tab === id ? "bg-amber-500 text-black shadow-lg font-bold" : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
               <Icon className="w-4 h-4" />
-              {label}
+              <span>{label}</span>
             </button>
           ))}
         </div>
@@ -583,6 +812,7 @@ export default function AdminPanel() {
           >
             {tab === "keys" && <KeysTab adminToken={adminToken} />}
             {tab === "injector" && <InjectSite adminOverrideToken={adminToken} hideHeader />}
+            {tab === "strings" && <StringsTab adminToken={adminToken} />}
             {tab === "cars" && <CarsTab adminToken={adminToken} />}
           </motion.div>
         </AnimatePresence>

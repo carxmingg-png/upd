@@ -47,11 +47,14 @@ export const CurrencyInputPreset = {
 export type CurrencyInputPreset = "max" | "safe" | "custom";
 
 export const CarsInjectInputMode = {
+  regular: "regular",
+  premium: "premium",
   all: "all",
-  missing: "missing",
-  select: "select",
+  first50: "first50",
+  random10: "random10",
+  custom: "custom",
 } as const;
-export type CarsInjectInputMode = "all" | "missing" | "select";
+export type CarsInjectInputMode = "regular" | "premium" | "all" | "first50" | "random10" | "custom";
 
 export const GenerateKeyInputDuration = {
   "1h": "1h",
