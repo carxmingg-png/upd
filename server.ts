@@ -1764,6 +1764,19 @@ class CarXClient {
       "Authorization": fToken(token)
     };
 
+    if (deviceId) {
+      headers["Device-Id"] = deviceId;
+      headers["X-Device-Id"] = deviceId;
+    }
+    if (uniqueId) {
+      headers["Unique-Id"] = uniqueId;
+      headers["X-Unique-Id"] = uniqueId;
+      headers["Unip-Id"] = uniqueId;
+      headers["X-Unip-Id"] = uniqueId;
+      headers["UnipId"] = uniqueId;
+      headers["X-UnipId"] = uniqueId;
+    }
+
     const b64 = compressData(profile);
     const payload = JSON.stringify({ compressed_data: b64 });
 
@@ -1780,7 +1793,8 @@ class CarXClient {
           console.log(`[PROFILE UPLOAD] Success on attempt ${attempt + 1}`);
           return { success: true, response: res };
         }
-        console.warn(`[PROFILE UPLOAD] Attempt ${attempt + 1} returned status ${res.status}`);
+        const errText = await res.text().catch(() => "");
+        console.warn(`[PROFILE UPLOAD] Attempt ${attempt + 1} returned status ${res.status}: ${errText.substring(0, 300)}`);
         await new Promise(r => setTimeout(r, 1500));
       } catch (e: any) {
         console.warn(`[PROFILE UPLOAD] Attempt ${attempt + 1} error:`, e.message || e);
@@ -2052,6 +2066,71 @@ function fToken(token: string) {
   return token.startsWith("Bearer ") ? token : `Bearer ${token}`;
 }
 
+export function buildCleanFreshProfile(): any {
+  const supra = makeCarEntry("toyotasupra2020", "1001", "stock");
+  const cleanProfile: any = {
+    date_time: new Date().toISOString().replace("T", " ").substring(0, 19),
+    data_version: 3,
+    messaging_version: 1,
+    is_tutorial_finished: true,
+    tutorial_step: 600,
+    current_car_id: 1001,
+    resources: {
+      soft: { amount: 21000 },
+      hard: { amount: 0 },
+      experience: { award_index: 1, amount: 0 }
+    },
+    cars: {
+      seed: 1002,
+      items: {
+        "1001": supra
+      }
+    },
+    car_models: {
+      keys: ["1001"],
+      values: ["toyotasupra2020"]
+    },
+    clubs: {},
+    quests: {
+      car_choice_intro: { completed: true, rewarded: true, trigger: {} },
+      move_to_apartment_intro_quest: { completed: true, rewarded: true, trigger: {} },
+      move_to_gasstation_intro_quest: { completed: true, rewarded: true, trigger: {} },
+      move_to_tuning_intro_quest: { completed: true, rewarded: true, trigger: {} },
+      move_to_club_intro_quest: { completed: true, rewarded: true, trigger: {} }
+    },
+    game_world_parts: {
+      industrial: { unlocked: true },
+      midtown: { unlocked: true },
+      suburb: { unlocked: true },
+      port: { unlocked: true },
+      mountain: { unlocked: true },
+      sunset: { unlocked: true }
+    },
+    real_estates: {},
+    real_estate_slots: {},
+    car_to_real_estate_slot: { keys: ["1001"], values: ["industrial_slot_0"] },
+    locations: {
+      default: {
+        location_objects_set: { keys: [...REAL_ESTATE_PROPERTIES, ...EXTRA_LOCATION_KEYS] }
+      }
+    },
+    statistics: {},
+    styling: { stock_items: ["general_nitro_stock"] },
+    tuning: {},
+    emoji: {
+      keys: ["0", "1", "2", "3"],
+      values: ["emoji_1", "emoji_2", "emoji_3", "emoji_4"]
+    },
+    battle_pass_event_rewards: { keys: ["unlock_avatar_1", "unlock_banner_1", "unlock_frame_1", "unlock_emoji_1"] },
+    unlocks: { keys: ["unlock_avatar_1", "unlock_banner_1", "unlock_frame_1", "unlock_emoji_1"] },
+    has_premium: false,
+    is_premium_active: false
+  };
+
+  ensureRealEstateSlotsForCars(cleanProfile);
+  return cleanProfile;
+}
+
 export function modifyProfile(base: any, mods: {
   cash?: number;
   gold?: number;
@@ -2068,44 +2147,34 @@ export function modifyProfile(base: any, mods: {
   frame?: string;
   random_cars_count?: number;
   inject_cars?: string[];
+  regular_cars?: boolean;
+  premium_cars?: boolean;
+  cars_package?: "regular" | "premium" | "all";
 }, userId?: string) {
   let profile: any;
-  // isFresh: use template as structural base when profile has no top-level resources.
-  // The template structure is required for the game to load properly.
-  // We fix the value overwrite problem separately in the resources seeding below.
   const isFresh = !base || Object.keys(base).length === 0 || !base.resources;
-
-  // Extract real player values BEFORE potentially replacing the base with the template.
-  // This preserves the player's actual cash/gold/level/exp when the profile structure
-  // needs the template as a base (e.g. resources stored in a nested path).
   const existingStats = (base && Object.keys(base).length > 0) ? extractProfileStats(base, false) : null;
 
   if (mods.safe_repair || isFresh) {
-    profile = structuredClone(PROFILE_TEMPLATE || {});
+    profile = buildCleanFreshProfile();
   } else {
     profile = structuredClone(base);
   }
 
   profile.date_time = new Date().toISOString().replace("T", " ").substring(0, 19);
 
-  // Removed user ID fields injection at root level of profile to prevent game client JSON deserialization errors/crashes
-
-
   // Ensure inner resources exist.
   if (!profile.resources) {
-    profile.resources = PROFILE_TEMPLATE ? structuredClone(PROFILE_TEMPLATE.resources) : {
-      soft: { amount: 0 },
+    profile.resources = {
+      soft: { amount: 21000 },
       hard: { amount: 0 },
       experience: { award_index: 1, amount: 0 }
     };
   }
-  if (!profile.resources.soft) profile.resources.soft = { amount: 0 };
+  if (!profile.resources.soft) profile.resources.soft = { amount: 21000 };
   if (!profile.resources.hard) profile.resources.hard = { amount: 0 };
   if (!profile.resources.experience) profile.resources.experience = { award_index: 1, amount: 0 };
 
-  // If we used the template as a base for a real (non-repair) account, restore the
-  // player's actual resource values so we don't overwrite them with template defaults.
-  // If no existingStats is available (truly fresh account), use starter values (21000 cash, 0 gold, level 1, 0 exp).
   if (isFresh && !mods.safe_repair) {
     const defaultCash = (existingStats && existingStats.cash > 0) ? existingStats.cash : 21000;
     const defaultGold = existingStats ? existingStats.gold : 0;
@@ -2626,14 +2695,17 @@ app.get(["/api/admin/strings", "/admin/strings"], authMiddleware, async (req, re
   const regCars = getRegularCarData(db);
   const premCars = getPremiumCarData(db);
 
+  const regString = db.custom_regular_cars_string || (Object.keys(regCars).length > 0 ? JSON.stringify(regCars, null, 2) : "");
+  const premString = db.custom_premium_cars_string || db.custom_cars_string || (Object.keys(premCars).length > 0 ? JSON.stringify(premCars, null, 2) : "");
+
   res.json({
     success: true,
-    regular_cars_string: db.custom_regular_cars_string || "",
-    regularCarsString: db.custom_regular_cars_string || "",
-    premium_cars_string: db.custom_premium_cars_string || db.custom_cars_string || "",
-    premiumCarsString: db.custom_premium_cars_string || db.custom_cars_string || "",
-    cars_string: db.custom_premium_cars_string || db.custom_cars_string || "",
-    carsString: db.custom_premium_cars_string || db.custom_cars_string || "",
+    regular_cars_string: regString,
+    regularCarsString: regString,
+    premium_cars_string: premString,
+    premiumCarsString: premString,
+    cars_string: premString,
+    carsString: premString,
     blueprint_string: db.custom_blueprint_string || "",
     blueprintString: db.custom_blueprint_string || "",
     car_count: Object.keys(regCars).length,
@@ -2670,7 +2742,11 @@ app.post(["/api/admin/strings", "/admin/strings"], authMiddleware, async (req, r
       if (!extracted || Object.keys(extracted).length === 0) {
         return res.status(400).json({ success: false, message: "Invalid regular cars data - no valid cars found." });
       }
-      db.custom_regular_cars_string = compressData({ cars: { items: extracted, seed: 1000 } });
+      try {
+        fs.writeFileSync(REGULAR_CARS_JSON_PATH, JSON.stringify(extracted, null, 2), "utf-8");
+        reloadBuiltinCars();
+      } catch {}
+      db.custom_regular_cars_string = JSON.stringify(extracted, null, 2);
     }
     _cachedRegularCars = null;
     _cachedRegularCarsSrc = "";
@@ -2686,9 +2762,13 @@ app.post(["/api/admin/strings", "/admin/strings"], authMiddleware, async (req, r
       if (!extracted || Object.keys(extracted).length === 0) {
         return res.status(400).json({ success: false, message: "Invalid premium cars data - no valid cars found." });
       }
-      const compressed = compressData({ cars: { items: extracted, seed: 1000 } });
-      db.custom_premium_cars_string = compressed;
-      db.custom_cars_string = compressed;
+      try {
+        fs.writeFileSync(PREMIUM_CARS_JSON_PATH, JSON.stringify(extracted, null, 2), "utf-8");
+        reloadBuiltinCars();
+      } catch {}
+      const jsonStr = JSON.stringify(extracted, null, 2);
+      db.custom_premium_cars_string = jsonStr;
+      db.custom_cars_string = jsonStr;
     }
     _cachedPremiumCars = null;
     _cachedPremiumCarsSrc = "";
