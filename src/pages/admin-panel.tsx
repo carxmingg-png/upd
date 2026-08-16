@@ -556,9 +556,9 @@ function AccountExtractorForm({
   };
 
   const handleApplyToSlot = () => {
-    if (!extractedData?.rawStr) return;
+    if (!extractedData?.rawStr && !extractedData?.jsonStr) return;
     playSuccess();
-    onExtracted(extractedData.compressedStr || extractedData.rawStr, targetSlot);
+    onExtracted(extractedData.jsonStr || extractedData.rawStr, targetSlot);
   };
 
   const handleDownloadFile = (content: string, ext: "json" | "txt") => {

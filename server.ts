@@ -960,12 +960,23 @@ export function extractCarsFromFileContent(content: string | undefined | null): 
     if (extracted && Object.keys(extracted).length > 0) return extracted;
   }
 
-  // 2. Try raw JSON
+  // 2. Try raw JSON (or JSON slice)
   try {
     const parsed = JSON.parse(trimmed);
     const extracted = extractCarsFromObject(parsed);
     if (extracted && Object.keys(extracted).length > 0) return extracted;
   } catch { }
+
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      const slice = trimmed.substring(firstBrace, lastBrace + 1);
+      const parsed = JSON.parse(slice);
+      const extracted = extractCarsFromObject(parsed);
+      if (extracted && Object.keys(extracted).length > 0) return extracted;
+    } catch { }
+  }
 
   // 3. Try searching for Base64 compressed string inside code / file (e.g. `REGULAR_CARS_STRING = "..."`)
   const b64Match = trimmed.match(/["']([A-Za-z0-9+/=]{100,})["']/);
@@ -995,6 +1006,40 @@ export function extractCarsFromFileContent(content: string | undefined | null): 
   return null;
 }
 
+// Built-in JSON data files paths
+const PREMIUM_CARS_JSON_PATH = path.join(process.cwd(), "data", "premium_cars.json");
+const REGULAR_CARS_JSON_PATH = path.join(process.cwd(), "data", "regular_cars.json");
+
+let BUILTIN_PREMIUM_CARS: Record<string, any> = {};
+let BUILTIN_REGULAR_CARS: Record<string, any> = {};
+
+export function reloadBuiltinCars() {
+  try {
+    if (fs.existsSync(PREMIUM_CARS_JSON_PATH)) {
+      const raw = fs.readFileSync(PREMIUM_CARS_JSON_PATH, "utf-8");
+      const parsed = JSON.parse(raw);
+      BUILTIN_PREMIUM_CARS = extractCarsFromObject(parsed) || parsed;
+      console.log(`[CARS] Loaded ${Object.keys(BUILTIN_PREMIUM_CARS).length} built-in premium cars from data/premium_cars.json`);
+    }
+  } catch (e) {
+    console.error("[CARS ERROR] Failed to load data/premium_cars.json:", e);
+  }
+
+  try {
+    if (fs.existsSync(REGULAR_CARS_JSON_PATH)) {
+      const raw = fs.readFileSync(REGULAR_CARS_JSON_PATH, "utf-8");
+      const parsed = JSON.parse(raw);
+      BUILTIN_REGULAR_CARS = extractCarsFromObject(parsed) || parsed;
+      console.log(`[CARS] Loaded ${Object.keys(BUILTIN_REGULAR_CARS).length} built-in regular cars from data/regular_cars.json`);
+    }
+  } catch (e) {
+    console.error("[CARS ERROR] Failed to load data/regular_cars.json:", e);
+  }
+}
+
+// Initial load at startup
+reloadBuiltinCars();
+
 // In-memory cache for loaded cars
 let _cachedRegularCars: Record<string, any> | null = null;
 let _cachedRegularCarsSrc = "";
@@ -1014,6 +1059,9 @@ export function getRegularCarData(db?: any): Record<string, any> {
       return cars;
     }
   }
+  if (BUILTIN_REGULAR_CARS && Object.keys(BUILTIN_REGULAR_CARS).length > 0) {
+    return structuredClone(BUILTIN_REGULAR_CARS);
+  }
   return getAllBuiltinCars();
 }
 
@@ -1029,6 +1077,9 @@ export function getPremiumCarData(db?: any): Record<string, any> {
       _cachedPremiumCarsSrc = customPrem;
       return cars;
     }
+  }
+  if (BUILTIN_PREMIUM_CARS && Object.keys(BUILTIN_PREMIUM_CARS).length > 0) {
+    return structuredClone(BUILTIN_PREMIUM_CARS);
   }
   return getAllBuiltinCars();
 }
